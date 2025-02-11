@@ -1,3 +1,17 @@
+// Add at the top with other global variables
+let ws;
+let isInitializingSettings = false;
+let currentSettings = null;
+let originalSettings = null;
+let isScrolledManually = false;
+let lastScrollTop = 0;
+let currentAssistantMessage = null;
+let conversationHistory = [];
+let isFirstMessage = true;
+let uploadedFiles = [];
+let currentConversationId = null;
+let isLoading = false;
+
 function formatTimestamp(timestamp) {
     const date = new Date(timestamp * 1000);
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -7,8 +21,6 @@ function formatTimestamp(timestamp) {
     const time = date.toLocaleTimeString();
     return `${month} ${day}, ${year} ${time}`;
 }
-
-let ws;
 
 function connectWebSocket() {
     // Use secure WebSocket if the page is served over HTTPS
@@ -96,7 +108,6 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-let isLoading = false;
 async function loadConversations() {
     if (isLoading) return;
     
@@ -228,11 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
 const chatForm = document.getElementById('chat-form');
 const messageInput = document.getElementById('message-input');
 const chatMessages = document.getElementById('chat-messages');
-let currentAssistantMessage = null;
-let conversationHistory = [];
-let isFirstMessage = true;
-let uploadedFiles = [];
-let currentConversationId = null; // This ensures we start with a new conversation
+const jumpToBottomButton = document.getElementById('jump-to-bottom');
 
 function appendUserMessage(content) {
     const messageDiv = document.createElement('div');
@@ -545,9 +552,9 @@ async function loadVersion() {
 }
 
 // Add these variables at the top of your script
-let isScrolledManually = false;
-let lastScrollTop = 0;
-const jumpToBottomButton = document.getElementById('jump-to-bottom');
+// let isScrolledManually = false;
+// let lastScrollTop = 0;
+// const jumpToBottomButton = document.getElementById('jump-to-bottom');
 
 // Add this function to handle scrolling
 function handleScroll() {
@@ -615,12 +622,15 @@ async function handleStream(response) {
     }
 }
 
-let currentSettings = null;
-let originalSettings = null;
+// let currentSettings = null;
+// let originalSettings = null;
 
 // Initialize settings panel
 async function initializeSettings() {
+    if (isInitializingSettings) return;
     try {
+        isInitializingSettings = true;
+        
         // Get all available settings
         const response = await fetch('/settings/all');
         if (!response.ok) throw new Error('Failed to fetch settings');
@@ -635,41 +645,46 @@ async function initializeSettings() {
         
         // Get default settings to mark as selected
         const defaultResponse = await fetch('/settings');
+        if (!defaultResponse.ok) throw new Error('Failed to fetch default settings');
         const defaultSettings = await defaultResponse.json();
         
         // Create a Map to track unique settings by ID
         const uniqueSettings = new Map();
         
         // Add unique settings to the Map
-        if (data.settings && data.settings.length > 0) {
+        if (data.settings && Array.isArray(data.settings)) {
             data.settings.forEach(setting => {
-                // Only add if we haven't seen this ID before
-                if (!uniqueSettings.has(setting.id)) {
+                // Only add if we haven't seen this ID before and the setting has a valid ID
+                if (setting && setting.id && !uniqueSettings.has(setting.id)) {
                     uniqueSettings.set(setting.id, setting);
                 }
             });
-            
-            // Convert Map values to array and sort if needed
-            const sortedSettings = Array.from(uniqueSettings.values())
-                .sort((a, b) => a.name.localeCompare(b.name));
-            
-            // Populate selector with unique settings
-            sortedSettings.forEach(setting => {
-                const option = document.createElement('option');
-                option.value = setting.id;
-                option.textContent = setting.name;
-                option.selected = setting.id === defaultSettings.id;
-                selector.appendChild(option);
-            });
-            
-            // Load selected settings if any options were added
-            if (selector.options.length > 0) {
-                await loadSettingsConfig(selector.value);
-            }
         }
         
-        // Add change listener
-        selector.addEventListener('change', (e) => loadSettingsConfig(e.target.value));
+        // Remove any existing change listener to prevent duplicates
+        const oldSelector = selector.cloneNode(false);
+        selector.parentNode.replaceChild(oldSelector, selector);
+        
+        // Convert Map values to array and sort by name
+        const sortedSettings = Array.from(uniqueSettings.values())
+            .sort((a, b) => a.name.localeCompare(b.name));
+        
+        // Populate selector with unique settings
+        sortedSettings.forEach(setting => {
+            const option = document.createElement('option');
+            option.value = setting.id;
+            option.textContent = setting.name;
+            option.selected = setting.id === defaultSettings.id;
+            oldSelector.appendChild(option);
+        });
+        
+        // Add new change listener
+        oldSelector.addEventListener('change', (e) => loadSettingsConfig(e.target.value));
+        
+        // Load selected settings if any options were added
+        if (oldSelector.options.length > 0) {
+            await loadSettingsConfig(oldSelector.value);
+        }
         
         // Add input listeners for change detection
         addSettingsChangeListeners();
@@ -677,6 +692,8 @@ async function initializeSettings() {
     } catch (error) {
         console.error('Failed to initialize settings:', error);
         alert('Error loading settings configurations');
+    } finally {
+        isInitializingSettings = false;
     }
 }
 
@@ -869,7 +886,18 @@ function checkSettingsChanged() {
 
 // Initialize settings when page loads
 document.addEventListener('DOMContentLoaded', () => {
-    // ...existing code...
+    // Initialize core functionality
+    loadConversations();
+    updateSystemPrompt();
+    startNewConversation();
+    connectWebSocket();
+    loadVersion();
+    
+    // Initialize settings only once
     initializeSettings();
-    // ...existing code...
-});
+    
+    // Add event listeners
+    document.getElementById('new-conversation-btn')?.addEventListener('click', startNewConversation);
+    chatMessages.addEventListener('scroll', handleScroll);
+    handleScroll();
+}, { once: true }); // Add {once: true} to ensure it only runs once
