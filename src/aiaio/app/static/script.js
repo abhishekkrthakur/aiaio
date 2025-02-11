@@ -14,6 +14,8 @@ let isLoading = false;
 let currentPrompt = null;
 let isPromptEditing = false;
 let editingPromptId = null;
+let originalPromptText = '';
+let isPromptEdited = false;
 
 function formatTimestamp(timestamp) {
     const date = new Date(timestamp * 1000);
@@ -103,6 +105,10 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Initialize prompts
     loadPrompts();
+    
+    // Add event listeners for prompt editing
+    document.getElementById('system-prompt').addEventListener('input', handlePromptTextChange);
+    document.getElementById('save-prompt-button').addEventListener('click', savePromptChanges);
 }, { once: true });
 
 document.addEventListener('visibilitychange', () => {
@@ -139,9 +145,6 @@ async function loadConversations() {
                      data-conversation-id="${conv.conversation_id}">
                     <div class="text-xs text-gray-600 dark:text-gray-300 italic overflow-hidden text-ellipsis">
                         ${conv.summary || 'No summary'}
-                    </div>
-                    <div class="text-[10px] text-gray-500 dark:text-gray-400">
-                        Messages: ${conv.message_count}
                     </div>
                     <div class="text-[10px] text-gray-500 dark:text-gray-400">
                         ${lastUpdated}
@@ -969,14 +972,8 @@ async function handlePromptChange(event) {
         if (!activateResponse.ok) throw new Error('Failed to activate prompt');
         
         // Then load its content
-        const contentResponse = await fetch(`/prompts/${promptId}`);
-        if (!contentResponse.ok) throw new Error('Failed to load prompt content');
+        await loadPromptContent(promptId);
         
-        const data = await contentResponse.json();
-        document.getElementById('system-prompt').value = data.content;
-        
-        // Refresh prompts list to update UI state
-        await loadPrompts();
     } catch (error) {
         console.error('Error changing prompt:', error);
         alert('Failed to change prompt');
@@ -989,6 +986,8 @@ function openPromptModal(promptId = null) {
     editingPromptId = promptId;
     const modal = document.getElementById('prompt-modal');
     const title = document.getElementById('prompt-modal-title');
+    const nameInput = document.getElementById('prompt-name');
+    const textInput = document.getElementById('prompt-text');
     
     if (promptId) {
         title.textContent = 'Edit Prompt';
@@ -996,12 +995,13 @@ function openPromptModal(promptId = null) {
         fetch(`/prompts/${promptId}`)
             .then(response => response.json())
             .then(data => {
-                document.getElementById('prompt-name').value = data.name;
-                document.getElementById('prompt-text').value = data.content;
+                nameInput.value = data.name;
+                textInput.value = data.content;
             });
     } else {
         title.textContent = 'Create New Prompt';
-        document.getElementById('prompt-form').reset();
+        nameInput.value = '';
+        textInput.value = '';
     }
     
     modal.classList.remove('hidden');
@@ -1013,32 +1013,6 @@ function closePromptModal() {
     modal.classList.add('hidden');
     modal.classList.remove('flex');
     editingPromptId = null;
-}
-
-// Replace existing handlePromptChange function
-async function handlePromptChange(event) {
-    const promptId = event.target.value;
-    if (!promptId) return;
-    
-    try {
-        // First activate the prompt
-        const activateResponse = await fetch(`/prompts/${promptId}/activate`, {
-            method: 'POST'
-        });
-        if (!activateResponse.ok) throw new Error('Failed to activate prompt');
-        
-        // Then load its content
-        const contentResponse = await fetch(`/prompts/${promptId}`);
-        if (!contentResponse.ok) throw new Error('Failed to load prompt content');
-        
-        const data = await contentResponse.json();
-        document.getElementById('system-prompt').value = data.content;
-    } catch (error) {
-        console.error('Error changing prompt:', error);
-        alert('Failed to change prompt');
-        // Reload prompts to ensure correct state
-        await loadPrompts();
-    }
 }
 
 // Add form submit handler for the prompt modal
@@ -1089,11 +1063,80 @@ document.getElementById('prompt-form').addEventListener('submit', async (e) => {
 
 // Update the DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', () => {
-    // ...existing code...
+    // ...existing initialization code...
     
-    // Add prompt selector change event listener
-    document.getElementById('prompt-selector').addEventListener('change', handlePromptChange);
+    // Add event listeners for prompts
+    document.getElementById('prompt-selector')?.addEventListener('change', handlePromptChange);
+    document.getElementById('system-prompt')?.addEventListener('input', handlePromptTextChange);
+    document.getElementById('save-prompt-button')?.addEventListener('click', savePromptChanges);
+    
+    // Add handlers for prompt modal
+    document.getElementById('prompt-modal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'prompt-modal') {
+            closePromptModal();
+        }
+    });
     
     // Load prompts
     loadPrompts();
 }, { once: true });
+
+function handlePromptTextChange() {
+    const promptText = document.getElementById('system-prompt').value;
+    const saveButton = document.getElementById('save-prompt-button');
+    
+    if (promptText !== originalPromptText) {
+        saveButton.classList.remove('hidden');
+        isPromptEdited = true;
+    } else {
+        saveButton.classList.add('hidden');
+        isPromptEdited = false;
+    }
+}
+
+async function savePromptChanges() {
+    const promptSelector = document.getElementById('prompt-selector');
+    const promptId = promptSelector.value;
+    const promptText = document.getElementById('system-prompt').value;
+    const promptName = promptSelector.options[promptSelector.selectedIndex].text;
+    
+    try {
+        const response = await fetch(`/prompts/${promptId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name: promptName,
+                text: promptText
+            })
+        });
+        
+        if (!response.ok) throw new Error('Failed to save prompt');
+        
+        originalPromptText = promptText;
+        document.getElementById('save-prompt-button').classList.add('hidden');
+        isPromptEdited = false;
+        
+    } catch (error) {
+        console.error('Error saving prompt:', error);
+        alert('Failed to save prompt changes');
+    }
+}
+
+async function loadPromptContent(promptId) {
+    try {
+        const response = await fetch(`/prompts/${promptId}`);
+        if (!response.ok) throw new Error('Failed to load prompt');
+        
+        const data = await response.json();
+        const systemPrompt = document.getElementById('system-prompt');
+        systemPrompt.value = data.content;
+        originalPromptText = data.content;
+        document.getElementById('save-prompt-button').classList.add('hidden');
+        isPromptEdited = false;
+        
+    } catch (error) {
+        console.error('Error loading prompt:', error);
+    }
+}

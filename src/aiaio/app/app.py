@@ -132,6 +132,7 @@ class SettingsInput(BaseModel):
         model_name (str): Name of the AI model to use
         api_key (str): Authentication key for the API
     """
+
     name: str
     temperature: Optional[float] = 1.0
     max_tokens: Optional[int] = 4096
@@ -149,6 +150,7 @@ class PromptInput(BaseModel):
         name (str): Name of the prompt
         text (str): The prompt text content
     """
+
     name: str
     text: str
 
@@ -195,7 +197,7 @@ async def text_streamer(messages: List[Dict[str, str]]):
     db_settings = db.get_settings()
     if not db_settings:
         raise HTTPException(status_code=404, detail="No default settings found")
-    
+
     client = OpenAI(
         api_key=db_settings["api_key"] if db_settings["api_key"] != "" else "empty",
         base_url=db_settings["host"],
@@ -416,6 +418,7 @@ async def create_settings(settings: SettingsInput):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.put("/settings/{settings_id}")
 async def update_settings(settings_id: int, settings: SettingsInput):
     """
@@ -438,6 +441,7 @@ async def update_settings(settings_id: int, settings: SettingsInput):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/settings/{settings_id}/set_default")
 async def set_default_settings(settings_id: int):
     """
@@ -456,6 +460,7 @@ async def set_default_settings(settings_id: int):
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/settings/all")
 async def get_all_settings():
@@ -506,8 +511,9 @@ async def get_default_values():
         "top_p": 0.95,
         "host": "http://localhost:8000/v1",
         "model_name": "meta-llama/Llama-3.2-1B-Instruct",
-        "api_key": ""
+        "api_key": "",
     }
+
 
 def generate_safe_filename(original_filename: str) -> str:
     """
@@ -549,7 +555,7 @@ async def get_system_prompt(conversation_id: str = None):
         HTTPException: If retrieval fails
     """
     try:
-        if (conversation_id):
+        if conversation_id:
             history = db.get_conversation_history(conversation_id)
             if history:
                 system_role_messages = [m for m in history if m["role"] == "system"]
@@ -738,16 +744,19 @@ async def get_all_prompts():
         prompts = db.get_all_prompts()
         formatted_prompts = []
         for prompt in prompts:
-            formatted_prompts.append({
-                'id': prompt['id'],
-                'name': prompt['prompt_name'],
-                'content': prompt['prompt_text'],
-                'is_active': bool(prompt['is_active'])  # Ensure boolean type
-            })
+            formatted_prompts.append(
+                {
+                    "id": prompt["id"],
+                    "name": prompt["prompt_name"],
+                    "content": prompt["prompt_text"],
+                    "is_active": bool(prompt["is_active"]),  # Ensure boolean type
+                }
+            )
         return {"prompts": formatted_prompts}
     except Exception as e:
         logger.error(f"Error getting prompts: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/prompts/{prompt_id}")
 async def get_prompt(prompt_id: int):
@@ -757,13 +766,14 @@ async def get_prompt(prompt_id: int):
         if not prompt:
             raise HTTPException(status_code=404, detail="Prompt not found")
         return {
-            "id": prompt['id'],  # Changed from tuple index to dict key
-            "name": prompt['prompt_name'],
-            "content": prompt['prompt_text']
+            "id": prompt["id"],  # Changed from tuple index to dict key
+            "name": prompt["prompt_name"],
+            "content": prompt["prompt_text"],
         }
     except Exception as e:
         logger.error(f"Error getting prompt {prompt_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/prompts")
 async def create_prompt(prompt: PromptInput):
@@ -773,6 +783,7 @@ async def create_prompt(prompt: PromptInput):
         return {"id": prompt_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.put("/prompts/{prompt_id}")
 async def update_prompt(prompt_id: int, prompt: PromptInput):
@@ -784,6 +795,7 @@ async def update_prompt(prompt_id: int, prompt: PromptInput):
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.delete("/prompts/{prompt_id}")
 async def delete_prompt(prompt_id: int):
@@ -804,7 +816,7 @@ async def delete_prompt(prompt_id: int):
         prompt = db.get_prompt_by_id(prompt_id)
         if not prompt:
             raise HTTPException(status_code=404, detail="Prompt not found")
-        
+
         if prompt["prompt_name"] == "default":
             raise HTTPException(status_code=403, detail="Cannot delete the default prompt")
 
@@ -849,16 +861,12 @@ async def get_active_prompt():
             prompt = db.get_prompt_by_name("default")
             if prompt:
                 # Make default prompt active
-                db.set_active_prompt(prompt['id'])
-        
+                db.set_active_prompt(prompt["id"])
+
         if not prompt:
             raise HTTPException(status_code=404, detail="No active or default prompt found")
-            
-        return {
-            "id": prompt['id'],
-            "name": prompt['prompt_name'],
-            "content": prompt['prompt_text']
-        }
+
+        return {"id": prompt["id"], "name": prompt["prompt_name"], "content": prompt["prompt_text"]}
     except Exception as e:
         logger.error(f"Error getting active prompt: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

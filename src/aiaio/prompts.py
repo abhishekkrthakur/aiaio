@@ -25,5 +25,5 @@ output: python snake game
 
 SYSTEM_PROMPTS = {
     "summary": SUMMARY_PROMPT,
-    "default": "You are a helpful bot that assists users with their queries. You should provide a helpful response to the user's query."
+    "default": "You are a helpful bot that assists users with their queries. You should provide a helpful response to the user's query.",
 }

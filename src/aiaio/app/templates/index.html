@@ -620,40 +620,20 @@
                                 </button>
                             </div>
 
-                            <!-- Add Modal for Prompts -->
-                            <div id="prompt-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-                                <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-96 max-w-[90%]">
-                                    <h3 class="text-lg font-semibold mb-4" id="prompt-modal-title">Create New Prompt</h3>
-                                    <form id="prompt-form" class="space-y-4">
-                                        <div>
-                                            <label class="block text-sm font-medium mb-1">Prompt Name</label>
-                                            <input type="text" id="prompt-name" 
-                                                class="w-full p-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
-                                                required>
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium mb-1">Prompt Text</label>
-                                            <textarea id="prompt-text" rows="4"
-                                                    class="w-full p-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
-                                                    required></textarea>
-                                        </div>
-                                        <div class="flex justify-end gap-2">
-                                            <button type="button" onclick="closePromptModal()"
-                                                    class="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 rounded-lg">
-                                                Cancel
-                                            </button>
-                                            <button type="submit"
-                                                    class="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600">
-                                                Save
-                                            </button>
-                                        </div>
-                                    </form>
-                                </div>
+                            <!-- Add prompt text with save button -->
+                            <div class="relative">
+                                <textarea id="system-prompt" 
+                                    class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" 
+                                    rows="2"
+                                    placeholder="Enter system prompt..."></textarea>
+                                <button id="save-prompt-button"
+                                        class="absolute right-2 top-2 p-1 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 hidden"
+                                        title="Save changes">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                    </svg>
+                                </button>
                             </div>
-                            <textarea id="system-prompt" 
-                                class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" 
-                                rows="2"
-                                placeholder="Enter system prompt..."></textarea>
                         </div>
                     </div>
                 </div>
@@ -804,6 +784,38 @@
             </button>
         </div>
     </aside>
+
+    <!-- Add Modal for Prompts -->
+    <div id="prompt-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-96 max-w-[90%]" onclick="event.stopPropagation()">
+            <h3 class="text-lg font-semibold mb-4" id="prompt-modal-title">Create New Prompt</h3>
+            <form id="prompt-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Prompt Name</label>
+                    <input type="text" id="prompt-name" 
+                        class="w-full p-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                        required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Prompt Text</label>
+                    <textarea id="prompt-text" rows="4"
+                            class="w-full p-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                            required></textarea>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="closePromptModal()"
+                            class="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                        Save
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
     <script src="/static/script.js?cb={{ time }}" defer></script>
     <script>

@@ -3,7 +3,9 @@ import sqlite3
 import time
 import uuid
 from typing import Dict, List, Optional
+
 from .prompts import SYSTEM_PROMPTS
+
 
 # SQL schema for creating database tables
 _DB = """
@@ -100,26 +102,34 @@ class ChatDatabase:
                 # Execute schema first
                 schema_sql = _DB.split("-- Initial system prompts")[0]
                 conn.executescript(schema_sql)
-                
+
                 # Then insert settings
                 conn.execute(
                     """INSERT INTO settings 
                        (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    ('default', True, 1.0, 4096, 0.95, 'http://localhost:8000/v1', 
-                     'meta-llama/Llama-3.2-1B-Instruct', '')
+                    (
+                        "default",
+                        True,
+                        1.0,
+                        4096,
+                        0.95,
+                        "http://localhost:8000/v1",
+                        "meta-llama/Llama-3.2-1B-Instruct",
+                        "",
+                    ),
                 )
-                
+
                 # Finally insert system prompts
                 conn.execute(
                     """INSERT INTO system_prompts (prompt_name, prompt_text, is_active)
                        VALUES (?, ?, ?)""",
-                    ('summary', SYSTEM_PROMPTS['summary'], False)
+                    ("summary", SYSTEM_PROMPTS["summary"], False),
                 )
                 conn.execute(
                     """INSERT INTO system_prompts (prompt_name, prompt_text, is_active)
                        VALUES (?, ?, ?)""",
-                    ('default', SYSTEM_PROMPTS['default'], True)
+                    ("default", SYSTEM_PROMPTS["default"], True),
                 )
             else:
                 # Check if tables exist
@@ -298,7 +308,7 @@ class ChatDatabase:
             current_time = time.time()
 
             # Remove id if it's None or not present (for new settings)
-            if 'id' not in settings or settings['id'] is None:
+            if "id" not in settings or settings["id"] is None:
                 cursor = conn.execute(
                     """
                     INSERT INTO settings (
@@ -355,9 +365,7 @@ class ChatDatabase:
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            settings = conn.execute(
-                "SELECT * FROM settings WHERE \"default\" = true"
-            ).fetchone()
+            settings = conn.execute('SELECT * FROM settings WHERE "default" = true').fetchone()
             return dict(settings) if settings else {}
 
     def add_settings(self, settings: Dict) -> int:
@@ -401,12 +409,9 @@ class ChatDatabase:
         with sqlite3.connect(self.db_path) as conn:
             # Remove current default
             conn.execute('UPDATE settings SET "default" = false WHERE "default" = true')
-            
+
             # Set new default
-            cursor = conn.execute(
-                'UPDATE settings SET "default" = true WHERE id = ?',
-                (settings_id,)
-            )
+            cursor = conn.execute('UPDATE settings SET "default" = true WHERE id = ?', (settings_id,))
             return cursor.rowcount > 0
 
     def get_all_settings(self) -> List[Dict]:
@@ -431,10 +436,7 @@ class ChatDatabase:
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            settings = conn.execute(
-                "SELECT * FROM settings WHERE id = ?",
-                (settings_id,)
-            ).fetchone()
+            settings = conn.execute("SELECT * FROM settings WHERE id = ?", (settings_id,)).fetchone()
             return dict(settings) if settings else None
 
     def update_conversation_summary(self, conversation_id: str, summary: str):
@@ -458,10 +460,7 @@ class ChatDatabase:
             int: ID of the newly created prompt
         """
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                "INSERT INTO system_prompts (prompt_name, prompt_text) VALUES (?, ?)",
-                (name, text)
-            )
+            cursor = conn.execute("INSERT INTO system_prompts (prompt_name, prompt_text) VALUES (?, ?)", (name, text))
             return cursor.lastrowid
 
     def edit_system_prompt(self, prompt_id: int, name: str, text: str) -> bool:
@@ -480,7 +479,7 @@ class ChatDatabase:
                 """UPDATE system_prompts 
                    SET prompt_name = ?, prompt_text = ?
                    WHERE id = ?""",
-                (name, text, prompt_id)
+                (name, text, prompt_id),
             )
             return cursor.rowcount > 0
 
@@ -495,10 +494,7 @@ class ChatDatabase:
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("UPDATE system_prompts SET is_active = false")
-            cursor = conn.execute(
-                "UPDATE system_prompts SET is_active = true WHERE id = ?",
-                (prompt_id,)
-            )
+            cursor = conn.execute("UPDATE system_prompts SET is_active = true WHERE id = ?", (prompt_id,))
             return cursor.rowcount > 0
 
     def get_active_prompt(self) -> Optional[Dict]:
@@ -509,9 +505,7 @@ class ChatDatabase:
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            prompt = conn.execute(
-                "SELECT * FROM system_prompts WHERE is_active = true"
-            ).fetchone()
+            prompt = conn.execute("SELECT * FROM system_prompts WHERE is_active = true").fetchone()
             return dict(prompt) if prompt else None
 
     def get_all_prompts(self) -> List[Dict]:
@@ -536,10 +530,7 @@ class ChatDatabase:
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            prompt = conn.execute(
-                "SELECT * FROM system_prompts WHERE id = ?",
-                (prompt_id,)
-            ).fetchone()
+            prompt = conn.execute("SELECT * FROM system_prompts WHERE id = ?", (prompt_id,)).fetchone()
             return dict(prompt) if prompt else None
 
     def delete_system_prompt(self, prompt_id: int) -> bool:
@@ -552,8 +543,5 @@ class ChatDatabase:
             bool: True if successful, False otherwise
         """
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                "DELETE FROM system_prompts WHERE id = ? AND prompt_name != 'default'",
-                (prompt_id,)
-            )
+            cursor = conn.execute("DELETE FROM system_prompts WHERE id = ? AND prompt_name != 'default'", (prompt_id,))
             return cursor.rowcount > 0
