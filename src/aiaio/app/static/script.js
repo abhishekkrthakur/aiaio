@@ -59,7 +59,7 @@ function handleWebSocketMessage(data) {
             // Find and update the specific conversation's summary
             const conversationElement = document.querySelector(`[data-conversation-id="${data.conversation_id}"]`);
             if (conversationElement) {
-                const summaryElement = conversationElement.querySelector('.text-[10px].text-gray-600');
+                const summaryElement = conversationElement.querySelector('.text-\\[10px\\].text-gray-500');
                 if (summaryElement) {
                     summaryElement.textContent = data.summary || 'No summary';
                 }
