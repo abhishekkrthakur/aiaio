@@ -141,6 +141,18 @@ class SettingsInput(BaseModel):
     api_key: Optional[str] = ""
 
 
+class PromptInput(BaseModel):
+    """
+    Pydantic model for system prompt input.
+
+    Attributes:
+        name (str): Name of the prompt
+        text (str): The prompt text content
+    """
+    name: str
+    text: str
+
+
 async def text_streamer(messages: List[Dict[str, str]]):
     """
     Stream text responses from the AI model.
@@ -288,7 +300,6 @@ async def create_conversation():
     """
     try:
         conversation_id = db.create_conversation()
-        # Broadcast update to all connected clients
         await manager.broadcast({"type": "conversation_created", "conversation_id": conversation_id})
         return {"conversation_id": conversation_id}
     except Exception as e:
@@ -548,7 +559,8 @@ async def get_system_prompt(conversation_id: str = None):
                 return {"system_prompt": last_system_message}
 
         # Default system prompt for new conversations or when no conversation_id is provided
-        return {"system_prompt": "You are a helpful assistant."}
+        active_prompt = db.get_active_prompt()
+        return {"system_prompt": active_prompt["prompt_text"]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -716,6 +728,139 @@ async def update_conversation_summary(conversation_id: str, summary: str = Form(
         db.update_conversation_summary(conversation_id, summary)
         return {"status": "success"}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/prompts")
+async def get_all_prompts():
+    """Get all system prompts."""
+    try:
+        prompts = db.get_all_prompts()
+        formatted_prompts = []
+        for prompt in prompts:
+            formatted_prompts.append({
+                'id': prompt['id'],
+                'name': prompt['prompt_name'],
+                'content': prompt['prompt_text'],
+                'is_active': bool(prompt['is_active'])  # Ensure boolean type
+            })
+        return {"prompts": formatted_prompts}
+    except Exception as e:
+        logger.error(f"Error getting prompts: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/prompts/{prompt_id}")
+async def get_prompt(prompt_id: int):
+    """Get a specific prompt."""
+    try:
+        prompt = db.get_prompt_by_id(prompt_id)
+        if not prompt:
+            raise HTTPException(status_code=404, detail="Prompt not found")
+        return {
+            "id": prompt['id'],  # Changed from tuple index to dict key
+            "name": prompt['prompt_name'],
+            "content": prompt['prompt_text']
+        }
+    except Exception as e:
+        logger.error(f"Error getting prompt {prompt_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/prompts")
+async def create_prompt(prompt: PromptInput):
+    """Create a new prompt."""
+    try:
+        prompt_id = db.add_system_prompt(prompt.name, prompt.text)
+        return {"id": prompt_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/prompts/{prompt_id}")
+async def update_prompt(prompt_id: int, prompt: PromptInput):
+    """Update an existing prompt."""
+    try:
+        success = db.edit_system_prompt(prompt_id, prompt.name, prompt.text)
+        if not success:
+            raise HTTPException(status_code=404, detail="Prompt not found")
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/prompts/{prompt_id}")
+async def delete_prompt(prompt_id: int):
+    """
+    Delete a system prompt.
+
+    Args:
+        prompt_id (int): ID of the prompt to delete
+
+    Returns:
+        dict: Operation status
+
+    Raises:
+        HTTPException: If deletion fails or prompt is protected
+    """
+    try:
+        # Get prompt to check if it's the default one
+        prompt = db.get_prompt_by_id(prompt_id)
+        if not prompt:
+            raise HTTPException(status_code=404, detail="Prompt not found")
+        
+        if prompt["prompt_name"] == "default":
+            raise HTTPException(status_code=403, detail="Cannot delete the default prompt")
+
+        success = db.delete_system_prompt(prompt_id)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete prompt")
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/prompts/{prompt_id}/activate")
+async def activate_prompt(prompt_id: int):
+    """
+    Set a prompt as the active system prompt.
+
+    Args:
+        prompt_id (int): ID of the prompt to activate
+
+    Returns:
+        dict: Operation status
+
+    Raises:
+        HTTPException: If activation fails or prompt not found
+    """
+    try:
+        success = db.set_active_prompt(prompt_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Prompt not found")
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/prompts/active")
+async def get_active_prompt():
+    """Get the currently active system prompt."""
+    try:
+        prompt = db.get_active_prompt()
+        if not prompt:
+            # If no active prompt, get default
+            prompt = db.get_prompt_by_name("default")
+            if prompt:
+                # Make default prompt active
+                db.set_active_prompt(prompt['id'])
+        
+        if not prompt:
+            raise HTTPException(status_code=404, detail="No active or default prompt found")
+            
+        return {
+            "id": prompt['id'],
+            "name": prompt['prompt_name'],
+            "content": prompt['prompt_text']
+        }
+    except Exception as e:
+        logger.error(f"Error getting active prompt: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -3,7 +3,7 @@ import sqlite3
 import time
 import uuid
 from typing import Dict, List, Optional
-
+from .prompts import SYSTEM_PROMPTS
 
 # SQL schema for creating database tables
 _DB = """
@@ -48,9 +48,23 @@ CREATE TABLE settings (
     updated_at REAL DEFAULT (strftime('%s.%f', 'now'))
 );
 
+CREATE TABLE system_prompts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    prompt_name TEXT NOT NULL UNIQUE,
+    prompt_text TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT false,
+    created_at REAL DEFAULT (strftime('%s.%f', 'now'))
+);
+
 -- Insert default settings
 INSERT INTO settings (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
 VALUES ('default', true, 1.0, 4096, 0.95, 'http://localhost:8000/v1', 'meta-llama/Llama-3.2-1B-Instruct', '');
+
+-- Initial system prompts
+INSERT INTO system_prompts (prompt_name, prompt_text, is_active)
+VALUES 
+    ('summary', ?, false),
+    ('default', ?, true);
 """
 
 
@@ -83,15 +97,38 @@ class ChatDatabase:
 
         with sqlite3.connect(self.db_path) as conn:
             if not db_exists:
-                conn.executescript(_DB)
+                # Execute schema first
+                schema_sql = _DB.split("-- Initial system prompts")[0]
+                conn.executescript(schema_sql)
+                
+                # Then insert settings
+                conn.execute(
+                    """INSERT INTO settings 
+                       (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    ('default', True, 1.0, 4096, 0.95, 'http://localhost:8000/v1', 
+                     'meta-llama/Llama-3.2-1B-Instruct', '')
+                )
+                
+                # Finally insert system prompts
+                conn.execute(
+                    """INSERT INTO system_prompts (prompt_name, prompt_text, is_active)
+                       VALUES (?, ?, ?)""",
+                    ('summary', SYSTEM_PROMPTS['summary'], False)
+                )
+                conn.execute(
+                    """INSERT INTO system_prompts (prompt_name, prompt_text, is_active)
+                       VALUES (?, ?, ?)""",
+                    ('default', SYSTEM_PROMPTS['default'], True)
+                )
             else:
                 # Check if tables exist
                 tables = conn.execute(
                     """SELECT name FROM sqlite_master
                        WHERE type='table' AND
-                       name IN ('conversations', 'messages', 'attachments', 'settings')"""
+                       name IN ('conversations', 'messages', 'attachments', 'settings', 'system_prompts')"""
                 ).fetchall()
-                if len(tables) < 4:
+                if len(tables) < 5:
                     conn.executescript(_DB)
                 else:
                     # Check if summary column exists
@@ -409,3 +446,114 @@ class ChatDatabase:
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("UPDATE conversations SET summary = ? WHERE conversation_id = ?", (summary, conversation_id))
+
+    def add_system_prompt(self, name: str, text: str) -> int:
+        """Add a new system prompt.
+
+        Args:
+            name (str): Name of the prompt
+            text (str): Prompt text
+
+        Returns:
+            int: ID of the newly created prompt
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "INSERT INTO system_prompts (prompt_name, prompt_text) VALUES (?, ?)",
+                (name, text)
+            )
+            return cursor.lastrowid
+
+    def edit_system_prompt(self, prompt_id: int, name: str, text: str) -> bool:
+        """Edit an existing system prompt.
+
+        Args:
+            prompt_id (int): ID of the prompt to edit
+            name (str): New name for the prompt
+            text (str): New prompt text
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                """UPDATE system_prompts 
+                   SET prompt_name = ?, prompt_text = ?
+                   WHERE id = ?""",
+                (name, text, prompt_id)
+            )
+            return cursor.rowcount > 0
+
+    def set_active_prompt(self, prompt_id: int) -> bool:
+        """Set a prompt as active and deactivate all others.
+
+        Args:
+            prompt_id (int): ID of the prompt to activate
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("UPDATE system_prompts SET is_active = false")
+            cursor = conn.execute(
+                "UPDATE system_prompts SET is_active = true WHERE id = ?",
+                (prompt_id,)
+            )
+            return cursor.rowcount > 0
+
+    def get_active_prompt(self) -> Optional[Dict]:
+        """Get the currently active system prompt.
+
+        Returns:
+            Optional[Dict]: Active prompt data if found, None otherwise
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            prompt = conn.execute(
+                "SELECT * FROM system_prompts WHERE is_active = true"
+            ).fetchone()
+            return dict(prompt) if prompt else None
+
+    def get_all_prompts(self) -> List[Dict]:
+        """Get all system prompts.
+
+        Returns:
+            List[Dict]: List of all prompts
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            prompts = conn.execute("SELECT * FROM system_prompts").fetchall()
+            return [dict(prompt) for prompt in prompts]
+
+    def get_prompt_by_id(self, prompt_id: int) -> Optional[Dict]:
+        """Get a specific system prompt by ID.
+
+        Args:
+            prompt_id (int): ID of the prompt to retrieve
+
+        Returns:
+            Optional[Dict]: Prompt data if found, None otherwise
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            prompt = conn.execute(
+                "SELECT * FROM system_prompts WHERE id = ?",
+                (prompt_id,)
+            ).fetchone()
+            return dict(prompt) if prompt else None
+
+    def delete_system_prompt(self, prompt_id: int) -> bool:
+        """Delete a system prompt.
+
+        Args:
+            prompt_id (int): ID of the prompt to delete
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "DELETE FROM system_prompts WHERE id = ? AND prompt_name != 'default'",
+                (prompt_id,)
+            )
+            return cursor.rowcount > 0

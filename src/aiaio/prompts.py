@@ -1,3 +1,5 @@
+# This file is kept for reference. The prompts are now also stored in the database.
+
 SUMMARY_PROMPT = """
 you are a bot that summarizes user messages in less than 50 characters.
 just write a summary of the conversation. dont write this is a summary.
@@ -20,3 +22,8 @@ output: greeting
 input: {'role': 'user', 'content': "['write a python snake game', 'thank you']"}
 output: python snake game
 """
+
+SYSTEM_PROMPTS = {
+    "summary": SUMMARY_PROMPT,
+    "default": "You are a helpful bot that assists users with their queries. You should provide a helpful response to the user's query."
+}
