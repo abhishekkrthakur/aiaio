@@ -124,6 +124,7 @@ class SettingsInput(BaseModel):
     Pydantic model for AI model settings.
 
     Attributes:
+        name (str): Name of the settings configuration
         temperature (float): Controls randomness in responses
         max_tokens (int): Maximum length of generated responses
         top_p (float): Controls diversity via nucleus sampling
@@ -131,7 +132,7 @@ class SettingsInput(BaseModel):
         model_name (str): Name of the AI model to use
         api_key (str): Authentication key for the API
     """
-
+    name: str
     temperature: Optional[float] = 1.0
     max_tokens: Optional[int] = 4096
     top_p: Optional[float] = 0.95
@@ -180,6 +181,9 @@ async def text_streamer(messages: List[Dict[str, str]]):
         formatted_messages.append(formatted_msg)
 
     db_settings = db.get_settings()
+    if not db_settings:
+        raise HTTPException(status_code=404, detail="No default settings found")
+    
     client = OpenAI(
         api_key=db_settings["api_key"] if db_settings["api_key"] != "" else "empty",
         base_url=db_settings["host"],
@@ -366,35 +370,121 @@ async def save_settings(settings: SettingsInput):
 @app.get("/settings")
 async def get_settings():
     """
-    Retrieve current AI model settings.
+    Retrieve current default settings configuration.
 
     Returns:
-        dict: Current settings or defaults if none saved
+        dict: Current default settings
 
     Raises:
         HTTPException: If retrieval fails
     """
     try:
         settings = db.get_settings()
-        # Return default settings if none are saved
         if not settings:
-            return {
-                "temperature": 1.0,
-                "max_tokens": 4096,
-                "top_p": 0.95,
-                "host": "http://localhost:8000/v1",
-                "model_name": "meta-llama/Llama-3.2-1B-Instruct",
-                "api_key": "",
-            }
+            raise HTTPException(status_code=404, detail="No default settings found")
         return settings
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/settings/defaults")
-async def get_default_settings():
+@app.post("/settings")
+async def create_settings(settings: SettingsInput):
     """
-    Get default AI model settings.
+    Create a new settings configuration.
+
+    Args:
+        settings (SettingsInput): Settings data to create
+
+    Returns:
+        dict: Created settings ID and status
+    """
+    try:
+        settings_dict = settings.model_dump()
+        settings_id = db.add_settings(settings_dict)
+        return {"status": "success", "id": settings_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/settings/{settings_id}")
+async def update_settings(settings_id: int, settings: SettingsInput):
+    """
+    Update an existing settings configuration.
+
+    Args:
+        settings_id (int): ID of settings to update
+        settings (SettingsInput): New settings data
+
+    Returns:
+        dict: Operation status
+    """
+    try:
+        settings_dict = settings.model_dump()
+        settings_dict["id"] = settings_id
+        success = db.save_settings(settings_dict)
+        if not success:
+            raise HTTPException(status_code=404, detail="Settings not found")
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/settings/{settings_id}/set_default")
+async def set_default_settings(settings_id: int):
+    """
+    Mark a settings configuration as default.
+
+    Args:
+        settings_id (int): ID of settings to mark as default
+
+    Returns:
+        dict: Operation status
+    """
+    try:
+        success = db.set_default_settings(settings_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Settings not found")
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/settings/all")
+async def get_all_settings():
+    """
+    Get all settings configurations.
+
+    Returns:
+        dict: List of all settings configurations
+    """
+    try:
+        settings = db.get_all_settings()
+        return {"settings": settings}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/settings/{settings_id}")
+async def get_settings_by_id(settings_id: int):
+    """
+    Get settings by ID.
+
+    Args:
+        settings_id (int): ID of settings to retrieve
+
+    Returns:
+        dict: Settings configuration
+    """
+    try:
+        settings = db.get_settings_by_id(settings_id)
+        if not settings:
+            raise HTTPException(status_code=404, detail="Settings not found")
+        return settings
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/default_settings")
+async def get_default_values():
+    """
+    Get default values for a new settings configuration.
 
     Returns:
         dict: Default settings values
@@ -405,9 +495,8 @@ async def get_default_settings():
         "top_p": 0.95,
         "host": "http://localhost:8000/v1",
         "model_name": "meta-llama/Llama-3.2-1B-Instruct",
-        "api_key": "",
+        "api_key": ""
     }
-
 
 def generate_safe_filename(original_filename: str) -> str:
     """
@@ -449,7 +538,7 @@ async def get_system_prompt(conversation_id: str = None):
         HTTPException: If retrieval fails
     """
     try:
-        if conversation_id:
+        if (conversation_id):
             history = db.get_conversation_history(conversation_id)
             if history:
                 system_role_messages = [m for m in history if m["role"] == "system"]

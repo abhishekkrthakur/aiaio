@@ -37,6 +37,8 @@ CREATE TABLE attachments (
 
 CREATE TABLE settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    "default" BOOLEAN NOT NULL DEFAULT false,
     temperature REAL DEFAULT 1.0,
     max_tokens INTEGER DEFAULT 4096,
     top_p REAL DEFAULT 0.95,
@@ -47,8 +49,8 @@ CREATE TABLE settings (
 );
 
 -- Insert default settings
-INSERT INTO settings (temperature, max_tokens, top_p, host, model_name, api_key)
-VALUES (1.0, 4096, 0.95, 'http://localhost:8000/v1', 'meta-llama/Llama-3.2-1B-Instruct', '');
+INSERT INTO settings (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
+VALUES ('default', true, 1.0, 4096, 0.95, 'http://localhost:8000/v1', 'meta-llama/Llama-3.2-1B-Instruct', '');
 """
 
 
@@ -257,19 +259,45 @@ class ChatDatabase:
         """
         with sqlite3.connect(self.db_path) as conn:
             current_time = time.time()
-            conn.execute(
+
+            # Remove id if it's None or not present (for new settings)
+            if 'id' not in settings or settings['id'] is None:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO settings (
+                        name, temperature, max_tokens, top_p, 
+                        host, model_name, api_key, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        settings.get("name", "New Config"),
+                        settings.get("temperature", 1.0),
+                        settings.get("max_tokens", 4096),
+                        settings.get("top_p", 0.95),
+                        settings.get("host", "http://localhost:8000/v1"),
+                        settings.get("model_name", "meta-llama/Llama-3.2-1B-Instruct"),
+                        settings.get("api_key", ""),
+                        current_time,
+                    ),
+                )
+                return cursor.rowcount > 0
+
+            # Update existing setting
+            cursor = conn.execute(
                 """
                 UPDATE settings
-                SET temperature = ?,
+                SET name = ?,
+                    temperature = ?,
                     max_tokens = ?,
                     top_p = ?,
                     host = ?,
                     model_name = ?,
                     api_key = ?,
                     updated_at = ?
-                WHERE id = 1
-            """,
+                WHERE id = ?
+                """,
                 (
+                    settings.get("name", "Default Config"),
                     settings.get("temperature", 1.0),
                     settings.get("max_tokens", 4096),
                     settings.get("top_p", 0.95),
@@ -277,20 +305,100 @@ class ChatDatabase:
                     settings.get("model_name", "meta-llama/Llama-3.2-1B-Instruct"),
                     settings.get("api_key", ""),
                     current_time,
+                    settings["id"],
                 ),
             )
-        return True
+            return cursor.rowcount > 0
 
     def get_settings(self) -> Dict:
-        """Retrieve current application settings.
+        """Retrieve current default application settings.
 
         Returns:
-            Dict: Dictionary containing all settings
+            Dict: Dictionary containing default settings
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            settings = conn.execute("SELECT * FROM settings WHERE id = 1").fetchone()
+            settings = conn.execute(
+                "SELECT * FROM settings WHERE \"default\" = true"
+            ).fetchone()
             return dict(settings) if settings else {}
+
+    def add_settings(self, settings: Dict) -> int:
+        """Add a new settings configuration.
+
+        Args:
+            settings (Dict): Dictionary containing setting key-value pairs
+
+        Returns:
+            int: ID of the newly created settings
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO settings (
+                    name, temperature, max_tokens, top_p,
+                    host, model_name, api_key
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    settings.get("name", "New Config"),
+                    settings.get("temperature", 1.0),
+                    settings.get("max_tokens", 4096),
+                    settings.get("top_p", 0.95),
+                    settings.get("host", "http://localhost:8000/v1"),
+                    settings.get("model_name", "meta-llama/Llama-3.2-1B-Instruct"),
+                    settings.get("api_key", ""),
+                ),
+            )
+            return cursor.lastrowid
+
+    def set_default_settings(self, settings_id: int) -> bool:
+        """Mark a settings configuration as default.
+
+        Args:
+            settings_id (int): ID of the settings to mark as default
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            # Remove current default
+            conn.execute('UPDATE settings SET "default" = false WHERE "default" = true')
+            
+            # Set new default
+            cursor = conn.execute(
+                'UPDATE settings SET "default" = true WHERE id = ?',
+                (settings_id,)
+            )
+            return cursor.rowcount > 0
+
+    def get_all_settings(self) -> List[Dict]:
+        """Retrieve all settings configurations.
+
+        Returns:
+            List[Dict]: List of all settings configurations
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            settings = conn.execute("SELECT * FROM settings ORDER BY name").fetchall()
+            return [dict(setting) for setting in settings]
+
+    def get_settings_by_id(self, settings_id: int) -> Optional[Dict]:
+        """Retrieve settings configuration by ID.
+
+        Args:
+            settings_id (int): ID of the settings to retrieve
+
+        Returns:
+            Optional[Dict]: Dictionary containing settings if found, None otherwise
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            settings = conn.execute(
+                "SELECT * FROM settings WHERE id = ?",
+                (settings_id,)
+            ).fetchone()
+            return dict(settings) if settings else None
 
     def update_conversation_summary(self, conversation_id: str, summary: str):
         """Update the summary of a conversation.

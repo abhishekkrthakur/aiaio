@@ -73,8 +73,15 @@ document.addEventListener('DOMContentLoaded', () => {
     updateSystemPrompt(); // Replace loadSystemPrompt with updateSystemPrompt
     startNewConversation();
     connectWebSocket(); // Replace startPolling() with WebSocket connection
-    loadSettings(); // Add this line
+    initializeSettings(); // Changed from loadSettings
     loadVersion(); // Add this line
+    
+    // Add new conversation button event listener here
+    document.getElementById('new-conversation-btn')?.addEventListener('click', startNewConversation);
+    
+    // Initialize scroll handling
+    chatMessages.addEventListener('scroll', handleScroll);
+    handleScroll(); // Check initial scroll position
 });
 
 document.addEventListener('visibilitychange', () => {
@@ -210,9 +217,6 @@ async function startNewConversation() {
     document.getElementById('file-preview-container').classList.add('hidden');
     await updateSystemPrompt(); // Fetch system prompt for new conversation
 }
-
-// Add new conversation button event listener
-document.getElementById('new-conversation-btn')?.addEventListener('click', startNewConversation);
 
 // Load conversations when page loads
 document.addEventListener('DOMContentLoaded', () => {
@@ -505,170 +509,6 @@ document.getElementById('file-input').addEventListener('change', async (e) => {
     }
 });
 
-let originalSettings = {};
-
-async function loadSettings() {
-    try {
-        const response = await fetch('/settings');
-        const settings = await response.json();
-        
-        // Store original settings
-        originalSettings = {...settings};
-        
-        // Update input values with server settings
-        updateSettingsInputs(settings);
-    } catch (error) {
-        console.error('Error loading settings:', error);
-        resetSettings();
-    }
-}
-
-function updateSettingsInputs(settings) {
-    document.getElementById('temperature').value = settings.temperature || 1.0;
-    document.getElementById('temperature-value').textContent = settings.temperature || 1.0;
-    document.getElementById('top_p').value = settings.top_p || 0.95;
-    document.getElementById('top_p-value').textContent = settings.top_p || 0.95;
-    document.getElementById('max_tokens').value = settings.max_tokens || 4096;
-    document.getElementById('host').value = settings.host || 'http://localhost:8000/v1';
-    document.getElementById('model_name').value = settings.model_name || 'meta-llama/Llama-3.2-1B-Instruct';
-    document.getElementById('api_key').value = settings.api_key || '';
-}
-
-function getCurrentSettings() {
-    return {
-        temperature: parseFloat(document.getElementById('temperature').value),
-        top_p: parseFloat(document.getElementById('top_p').value),
-        max_tokens: parseInt(document.getElementById('max_tokens').value),
-        host: document.getElementById('host').value,
-        model_name: document.getElementById('model_name').value,
-        api_key: document.getElementById('api_key').value
-    };
-}
-
-async function checkSettingsChanged() {
-    const currentSettings = getCurrentSettings();
-    const warning = document.getElementById('settings-warning');
-    
-    try {
-        const response = await fetch('/settings');
-        const serverSettings = await response.json();
-        
-        const hasChanges = Object.keys(currentSettings).some(key => 
-            serverSettings[key] !== currentSettings[key]
-        );
-        
-        warning.classList.toggle('hidden', !hasChanges);
-    } catch (error) {
-        console.error('Error checking settings:', error);
-        // If we can't reach the server, hide the warning
-        warning.classList.add('hidden');
-    }
-}
-
-// Add change listeners to all settings inputs
-['temperature', 'top_p', 'max_tokens', 'host', 'model_name', 'api_key'].forEach(id => {
-    document.getElementById(id).addEventListener('input', () => {
-        // Debounce the check to avoid too many server requests
-        clearTimeout(window.settingsCheckTimeout);
-        window.settingsCheckTimeout = setTimeout(checkSettingsChanged, 300);
-    });
-});
-
-async function saveSettings() {
-    try {
-        const response = await fetch('/save_settings', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(getCurrentSettings())
-        });
-
-        if (response.ok) {
-            // Update original settings to match current
-            originalSettings = getCurrentSettings();
-            // Hide warning
-            document.getElementById('settings-warning').classList.add('hidden');
-            alert('Settings saved successfully');
-        } else {
-            alert('Failed to save settings');
-        }
-    } catch (error) {
-        console.error('Error saving settings:', error);
-        alert('Error saving settings');
-    }
-}
-
-async function performSettingsReset() {
-    try {
-        const response = await fetch('/settings/defaults');
-        const defaultSettings = await response.json();
-        updateSettingsInputs(defaultSettings);
-        originalSettings = {...defaultSettings};
-        document.getElementById('settings-warning').classList.add('hidden');
-    } catch (error) {
-        console.error('Error fetching default settings:', error);
-        const fallbackDefaults = {
-            temperature: 1.0,
-            top_p: 0.95,
-            max_tokens: 4096,
-            host: 'http://localhost:8000/v1',
-            model_name: 'meta-llama/Llama-3.2-1B-Instruct',
-            api_key: ''
-        };
-        updateSettingsInputs(fallbackDefaults);
-        originalSettings = {...fallbackDefaults};
-        document.getElementById('settings-warning').classList.add('hidden');
-    }
-}
-
-function injectSettingsModal() {
-    // Create modal if it doesn't exist
-    if (!document.getElementById('settings-modal')) {
-        const modal = document.createElement('div');
-        modal.id = 'settings-modal';
-        modal.className = 'fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden';
-        modal.innerHTML = `
-            <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-sm mx-auto">
-                <h3 class="text-lg font-semibold mb-4">Confirm Reset</h3>
-                <p class="mb-4">Are you sure you want to reset all settings to factory defaults? This cannot be undone.</p>
-                <div class="flex justify-end gap-2">
-                    <button id="cancel-reset" class="px-4 py-2 text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 rounded">
-                        Cancel
-                    </button>
-                    <button id="confirm-reset" class="px-4 py-2 bg-red-500 text-white hover:bg-red-600 rounded">
-                        Reset Settings
-                    </button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-
-        // Add event listeners
-        document.getElementById('cancel-reset').addEventListener('click', () => {
-            modal.classList.add('hidden');
-        });
-
-        document.getElementById('confirm-reset').addEventListener('click', async () => {
-            modal.classList.add('hidden');
-            await performSettingsReset();
-        });
-
-        // Close modal when clicking outside
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.classList.add('hidden');
-            }
-        });
-    }
-}
-
-function resetSettings() {
-    injectSettingsModal();
-    const modal = document.getElementById('settings-modal');
-    modal.classList.remove('hidden');
-}
-
 async function deleteConversation(conversationId, event) {
     event.stopPropagation(); // Prevent triggering the conversation load
     if (!confirm('Are you sure you want to delete this conversation?')) return;
@@ -775,11 +615,261 @@ async function handleStream(response) {
     }
 }
 
-// Add this initialization when the page loads
-document.addEventListener('DOMContentLoaded', () => {
-    // ...existing initialization code...
+let currentSettings = null;
+let originalSettings = null;
+
+// Initialize settings panel
+async function initializeSettings() {
+    try {
+        // Get all available settings
+        const response = await fetch('/settings/all');
+        if (!response.ok) throw new Error('Failed to fetch settings');
+        
+        const data = await response.json();
+        const selector = document.getElementById('settings-selector');
+        
+        // Clear existing options
+        while (selector.firstChild) {
+            selector.removeChild(selector.firstChild);
+        }
+        
+        // Get default settings to mark as selected
+        const defaultResponse = await fetch('/settings');
+        const defaultSettings = await defaultResponse.json();
+        
+        // Create a Map to track unique settings by ID
+        const uniqueSettings = new Map();
+        
+        // Add unique settings to the Map
+        if (data.settings && data.settings.length > 0) {
+            data.settings.forEach(setting => {
+                // Only add if we haven't seen this ID before
+                if (!uniqueSettings.has(setting.id)) {
+                    uniqueSettings.set(setting.id, setting);
+                }
+            });
+            
+            // Convert Map values to array and sort if needed
+            const sortedSettings = Array.from(uniqueSettings.values())
+                .sort((a, b) => a.name.localeCompare(b.name));
+            
+            // Populate selector with unique settings
+            sortedSettings.forEach(setting => {
+                const option = document.createElement('option');
+                option.value = setting.id;
+                option.textContent = setting.name;
+                option.selected = setting.id === defaultSettings.id;
+                selector.appendChild(option);
+            });
+            
+            // Load selected settings if any options were added
+            if (selector.options.length > 0) {
+                await loadSettingsConfig(selector.value);
+            }
+        }
+        
+        // Add change listener
+        selector.addEventListener('change', (e) => loadSettingsConfig(e.target.value));
+        
+        // Add input listeners for change detection
+        addSettingsChangeListeners();
+        
+    } catch (error) {
+        console.error('Failed to initialize settings:', error);
+        alert('Error loading settings configurations');
+    }
+}
+
+// Update loadSettingsConfig to automatically set selected as default
+async function loadSettingsConfig(id) {
+    try {
+        const response = await fetch(`/settings/${id}`);
+        if (!response.ok) throw new Error('Failed to fetch settings config');
+        
+        const settings = await response.json();
+        updateSettingsForm(settings);
+        
+        // Store current and original settings
+        currentSettings = settings;
+        originalSettings = {...settings};
+        
+        // Set this configuration as default automatically
+        await fetch(`/settings/${id}/set_default`, { method: 'POST' });
+        
+        // Hide warning
+        document.getElementById('settings-warning').classList.add('hidden');
+        
+    } catch (error) {
+        console.error('Failed to load settings config:', error);
+        alert('Error loading settings configuration');
+    }
+}
+
+// Update form with settings values
+function updateSettingsForm(settings) {
+    document.getElementById('config-name').value = settings.name || '';
+    document.getElementById('temperature').value = settings.temperature || 1.0;
+    document.getElementById('temperature-value').textContent = settings.temperature || 1.0;
+    document.getElementById('top-p').value = settings.top_p || 0.95;
+    document.getElementById('top-p-value').textContent = settings.top_p || 0.95;
+    document.getElementById('max-tokens').value = settings.max_tokens || 4096;
+    document.getElementById('api-host').value = settings.host || '';
+    document.getElementById('model-name').value = settings.model_name || '';
+    document.getElementById('api-key').value = settings.api_key || '';
+}
+
+// Create new settings configuration
+async function createNewSettingsConfig() {
+    try {
+        // Get default values
+        const response = await fetch('/default_settings');
+        if (!response.ok) throw new Error('Failed to fetch default values');
+        
+        const defaults = await response.json();
+        
+        // Get name from user
+        const name = prompt('Enter name for new configuration:');
+        if (!name?.trim()) {
+            alert('Configuration name is required');
+            return;
+        }
+        
+        // Update form with default values and new name without saving
+        updateSettingsForm({
+            ...defaults,
+            name: name.trim(),
+            id: 'new' // Special marker for new unsaved config
+        });
+        
+        // Update stored settings state
+        currentSettings = {
+            ...defaults,
+            name: name.trim(),
+            id: 'new'
+        };
+        originalSettings = null; // This will make the form show as "unsaved"
+        
+        // Show the unsaved changes warning
+        document.getElementById('settings-warning').classList.remove('hidden');
+        
+    } catch (error) {
+        console.error('Failed to load default settings:', error);
+        alert('Error creating new configuration');
+    }
+}
+
+// Update saveSettings function to remove default toggle handling
+async function saveSettings() {
+    try {
+        const settings = {
+            name: document.getElementById('config-name').value.trim(),
+            temperature: parseFloat(document.getElementById('temperature').value),
+            top_p: parseFloat(document.getElementById('top-p').value),
+            max_tokens: parseInt(document.getElementById('max-tokens').value),
+            host: document.getElementById('api-host').value.trim(),
+            model_name: document.getElementById('model-name').value.trim(),
+            api_key: document.getElementById('api-key').value.trim()
+        };
+        
+        if (!settings.name) {
+            alert('Configuration name is required');
+            return;
+        }
+
+        let response;
+        let result;
+        
+        // If this is a new configuration
+        if (currentSettings.id === 'new') {
+            response = await fetch('/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(settings)
+            });
+        } else {
+            // Update existing configuration
+            settings.id = currentSettings.id;
+            response = await fetch(`/settings/${settings.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(settings)
+            });
+        }
+        
+        if (!response.ok) {
+            throw new Error('Failed to save settings');
+        }
+        
+        result = await response.json();
+        
+        // For new settings, we need the ID from the response
+        const settingsId = currentSettings.id === 'new' ? result.id : settings.id;
+        
+        // Set as default automatically
+        const defaultResponse = await fetch(`/settings/${settingsId}/set_default`, {
+            method: 'POST'
+        });
+        
+        if (!defaultResponse.ok) {
+            throw new Error('Failed to set as default');
+        }
+
+        // Update the current settings state
+        currentSettings = {
+            ...settings,
+            id: settingsId
+        };
+        originalSettings = {...currentSettings};
+        
+        // Hide the warning since we just saved
+        document.getElementById('settings-warning').classList.add('hidden');
+        
+        // Refresh the settings list and reselect current settings
+        await initializeSettings();
+        document.getElementById('settings-selector').value = settingsId;
+        
+        alert('Settings saved successfully');
+        
+    } catch (error) {
+        console.error('Failed to save settings:', error);
+        alert('Error saving settings: ' + error.message);
+    }
+}
+
+// Update addSettingsChangeListeners to remove default-config-toggle
+function addSettingsChangeListeners() {
+    const inputs = [
+        'config-name', 'temperature', 'top-p', 'max-tokens',
+        'api-host', 'model-name', 'api-key'
+    ];
     
-    // Initialize scroll handling
-    chatMessages.addEventListener('scroll', handleScroll);
-    handleScroll(); // Check initial scroll position
+    inputs.forEach(id => {
+        document.getElementById(id).addEventListener('input', checkSettingsChanged);
+    });
+}
+
+// Check if settings have changed
+function checkSettingsChanged() {
+    if (!originalSettings) return;
+    
+    const current = {
+        id: document.getElementById('settings-selector').value,
+        name: document.getElementById('config-name').value.trim(),
+        temperature: parseFloat(document.getElementById('temperature').value),
+        top_p: parseFloat(document.getElementById('top-p').value),
+        max_tokens: parseInt(document.getElementById('max-tokens').value),
+        host: document.getElementById('api-host').value.trim(),
+        model_name: document.getElementById('model-name').value.trim(),
+        api_key: document.getElementById('api-key').value.trim()
+    };
+    
+    const hasChanged = JSON.stringify(current) !== JSON.stringify(originalSettings);
+    document.getElementById('settings-warning').classList.toggle('hidden', !hasChanged);
+}
+
+// Initialize settings when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    // ...existing code...
+    initializeSettings();
+    // ...existing code...
 });

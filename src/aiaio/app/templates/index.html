@@ -541,6 +541,8 @@
             <a href="#" class="flex items-center ps-2.5 mb-4">
                 <span class="font-['Orbitron'] text-2xl font-semibold bg-gradient-to-r from-blue-500 to-purple-600 text-transparent bg-clip-text">aiaio</span>
             </a>
+            <!-- Add this line for version display -->
+            <div id="version-display" class="text-xs text-gray-500 dark:text-gray-400 ps-2.5 mb-4"></div>
             <hr class="mb-4 border-gray-200 dark:border-gray-700">
             
             <!-- New Chat Button - Moved here -->
@@ -662,78 +664,79 @@
     <!-- Right Sidebar -->
     <aside class="settings-sidebar fixed top-0 right-0 z-40 w-64 hidden sm:block">
         <div class="h-[calc(100vh-2rem)] my-4 mx-3 px-3 py-4 overflow-y-auto bg-gray-50 dark:bg-gray-800 rounded-lg flex flex-col relative">
-            
             <!-- Settings header -->
-            <div class="flex justify-between items-center mb-4">
+            <div class="flex items-center justify-between mb-4">
                 <h3 class="text-sm font-semibold">Settings</h3>
-                <button onclick="resetSettings()" 
-                        class="p-2 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
-                        title="Reset to defaults">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                <button onclick="createNewSettingsConfig()" 
+                        class="p-1 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                        title="Create new configuration">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                     </svg>
                 </button>
             </div>
-            
 
-            <!-- Settings content - flex-1 makes it take available space -->
+            <!-- Configuration selector -->
+            <div class="mb-4">
+                <label class="block text-xs font-medium mb-2">Active Configuration</label>
+                <select id="settings-selector" 
+                        class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+                </select>
+            </div>
+
+            <!-- Configuration name -->
+            <div class="mb-4">
+                <label class="block text-xs font-medium mb-2">Configuration Name</label>
+                <input type="text" id="config-name" required
+                    class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                    placeholder="Enter configuration name">
+            </div>
+
+            <!-- Model settings -->
             <div class="flex-1 space-y-4 overflow-y-auto">
                 <div>
-                    <label for="temperature" class="block text-xs font-medium mb-2">
-                        Temperature: <span id="temperature-value">1.0</span>
-                    </label>
-                    <input type="range" id="temperature" 
-                        min="0" max="2" step="0.05" value="1.0"
-                        class="w-full"
-                        oninput="document.getElementById('temperature-value').textContent=this.value">
+                    <label class="block text-xs font-medium mb-2">Temperature</label>
+                    <input type="range" id="temperature" min="0" max="2" step="0.1" 
+                        class="w-full mb-1"
+                        oninput="document.getElementById('temperature-value').textContent = this.value">
+                    <span class="text-xs text-gray-500" id="temperature-value">1.0</span>
                 </div>
 
                 <div>
-                    <label for="top_p" class="block text-xs font-medium mb-2">
-                        Top P: <span id="top_p-value">0.95</span>
-                    </label>
-                    <input type="range" id="top_p" 
-                        min="0" max="1" step="0.05" value="0.95"
-                        class="w-full"
-                        oninput="document.getElementById('top_p-value').textContent=this.value">
+                    <label class="block text-xs font-medium mb-2">Top P</label>
+                    <input type="range" id="top-p" min="0" max="1" step="0.05"
+                        class="w-full mb-1"
+                        oninput="document.getElementById('top-p-value').textContent = this.value">
+                    <span class="text-xs text-gray-500" id="top-p-value">0.95</span>
                 </div>
 
                 <div>
-                    <label for="max_tokens" class="block text-xs font-medium mb-2">Max Tokens</label>
-                    <input type="number" id="max_tokens" 
-                        value="4096" min="1"
+                    <label class="block text-xs font-medium mb-2">Max Tokens</label>
+                    <input type="number" id="max-tokens" min="1"
                         class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
                 </div>
 
                 <div>
-                    <label for="host" class="block text-xs font-medium mb-2">Host</label>
-                    <input type="text" id="host" 
-                        value="http://localhost:8000/v1"
+                    <label class="block text-xs font-medium mb-2">API Host</label>
+                    <input type="text" id="api-host"
                         class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
                 </div>
 
                 <div>
-                    <label for="model_name" class="block text-xs font-medium mb-2">Model Name</label>
-                    <input type="text" id="model_name" 
-                        value="meta-llama/Llama-3.2-1B-Instruct"
+                    <label class="block text-xs font-medium mb-2">Model Name</label>
+                    <input type="text" id="model-name"
                         class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
                 </div>
 
                 <div>
-                    <label for="api_key" class="block text-xs font-medium mb-2">API Key</label>
-                    <input type="password" id="api_key" 
-                        placeholder="Enter API key"
+                    <label class="block text-xs font-medium mb-2">API Key</label>
+                    <input type="password" id="api-key"
                         class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
                 </div>
             </div>
-            <!-- Version display -->
-            <div class="text-xs text-gray-600 dark:text-gray-400 text-center" id="version-display">
-                version: loading...
-            </div>
-            <!-- Save button at bottom -->
+
+            <!-- Save button and warning -->
             <div class="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
-                <!-- Add warning message -->
                 <div id="settings-warning" class="hidden mb-2 text-xs text-yellow-600 dark:text-yellow-400">
                     <div class="flex items-center gap-1">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -748,13 +751,14 @@
                            text-white rounded-lg hover:from-blue-600 hover:to-blue-700 
                            transition-all duration-200 transform hover:scale-[1.02] 
                            flex items-center justify-center gap-2 shadow-lg hover:shadow-blue-500/50">
-                    Save Settings
-                </button>
-                <!-- Add toggle button after the save button -->
-                <button class="settings-toggle" onclick="toggleSettingsSidebar()" title="Toggle Settings">
-                    <i class="fas fa-chevron-left w-4 h-4 transition-transform duration-300"></i>
+                    Save Configuration
                 </button>
             </div>
+
+            <!-- Settings toggle button -->
+            <button class="settings-toggle" onclick="toggleSettingsSidebar()" title="Toggle Settings">
+                <i class="fas fa-chevron-left w-4 h-4 transition-transform duration-300"></i>
+            </button>
         </div>
     </aside>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
