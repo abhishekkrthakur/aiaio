@@ -604,11 +604,6 @@ async function loadVersion() {
     }
 }
 
-// Add these variables at the top of your script
-// let isScrolledManually = false;
-// let lastScrollTop = 0;
-// const jumpToBottomButton = document.getElementById('jump-to-bottom');
-
 // Add this function to handle scrolling
 function handleScroll() {
     const currentScrollTop = elements.chatMessages.scrollTop;
@@ -652,9 +647,7 @@ function appendMessage(role, content) {
 }
 
 // Update your streaming response handler
-async function handleStream(response) {
-    // ...existing code...
-    
+async function handleStream(response) {    
     try {
         const reader = response.body.getReader();
         let partialMessage = '';
@@ -662,9 +655,7 @@ async function handleStream(response) {
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            
-            // ...existing streaming code...
-            
+                        
             // Only auto-scroll if user hasn't scrolled manually
             if (!state.isScrolledManually) {
                 scrollToBottom();
@@ -674,9 +665,6 @@ async function handleStream(response) {
         console.error('Error reading stream:', error);
     }
 }
-
-// let currentSettings = null;
-// let originalSettings = null;
 
 // Initialize settings panel
 async function initializeSettings() {
@@ -1309,8 +1297,6 @@ async function loadPromptContent(promptId) {
     }
 }
 
-// ...existing code...
-
 function openSettingsModal() {
     const modal = document.getElementById('settings-modal');
     modal.classList.remove('hidden');
@@ -1401,8 +1387,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
 }, { once: true });
-
-// ...existing code...
 
 function toggleSystemPrompt() {
     const container = document.getElementById('system-prompt-container');
