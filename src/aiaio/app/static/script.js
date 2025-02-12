@@ -1,30 +1,90 @@
-// Add at the top with other global variables
-let ws;
-let isInitializingSettings = false;
-let currentSettings = null;
-let originalSettings = null;
-let isScrolledManually = false;
-let lastScrollTop = 0;
-let currentAssistantMessage = null;
-let conversationHistory = [];
-let isFirstMessage = true;
-let uploadedFiles = [];
-let currentConversationId = null;
-let isLoading = false;
-let currentPrompt = null;
-let isPromptEditing = false;
-let editingPromptId = null;
-let originalPromptText = '';
-let isPromptEdited = false;
+// Global state management
+const state = {
+    ws: null,
+    isInitializingSettings: false,
+    currentSettings: null,
+    originalSettings: null,
+    isScrolledManually: false,
+    lastScrollTop: 0,
+    currentAssistantMessage: null,
+    currentConversationId: null,
+    isLoading: false,
+    currentPrompt: null,
+    isPromptEditing: false,
+    editingPromptId: null,
+    originalPromptText: '',
+    isPromptEdited: false
+};
+
+// DOM Elements
+const elements = {
+    chatForm: document.getElementById('chat-form'),
+    messageInput: document.getElementById('message-input'),
+    chatMessages: document.getElementById('chat-messages'),
+    jumpToBottomButton: document.getElementById('jump-to-bottom'),
+    systemPrompt: document.getElementById('system-prompt'),
+    fileInput: document.getElementById('file-input'),
+    filePreviewContainer: document.getElementById('file-preview-container'),
+    sendButton: document.getElementById('send-button')
+};
+
+// Initialize app
+document.addEventListener('DOMContentLoaded', () => {
+    initializeCore();
+    initializeEventListeners();
+}, { once: true });
+
+function initializeCore() {
+    loadConversations();
+    updateSystemPrompt();
+    startNewConversation();
+    connectWebSocket();
+    initializeSettings();
+    loadVersion();
+    loadPrompts();
+}
+
+function initializeEventListeners() {
+    elements.chatMessages.addEventListener('scroll', handleScroll);
+    document.getElementById('prompt-selector')?.addEventListener('change', handlePromptChange);
+    elements.systemPrompt.addEventListener('input', handlePromptTextChange);
+    document.getElementById('save-prompt-button').addEventListener('click', savePromptChanges);
+    document.getElementById('new-conversation-btn')?.addEventListener('click', startNewConversation);
+    
+    // Handle visibility change
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+}
 
 function formatTimestamp(timestamp) {
     const date = new Date(timestamp * 1000);
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const month = months[date.getMonth()];
-    const day = date.getDate();
-    const year = date.getFullYear();
-    const time = date.toLocaleTimeString();
-    return `${month} ${day}, ${year} ${time}`;
+    return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()} ${date.toLocaleTimeString()}`;
+}
+
+function scrollToBottom() {
+    elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+    state.isScrolledManually = false;
+    elements.jumpToBottomButton.classList.remove('visible');
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text)
+        .then(() => showCopiedFeedback(event.target))
+        .catch(err => console.error('Failed to copy:', err));
+}
+
+function showCopiedFeedback(button) {
+    const originalText = button.textContent;
+    button.textContent = 'Copied!';
+    setTimeout(() => {
+        button.textContent = originalText;
+    }, 2000);
+}
+
+// Error handling
+function handleError(error, context) {
+    console.error(`Error in ${context}:`, error);
+    // You could add more sophisticated error handling here
 }
 
 function connectWebSocket() {
@@ -32,26 +92,26 @@ function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
     
-    ws = new WebSocket(wsUrl);
+    state.ws = new WebSocket(wsUrl);
 
-    ws.onmessage = (event) => {
+    state.ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         handleWebSocketMessage(data);
     };
 
-    ws.onclose = () => {
+    state.ws.onclose = () => {
         // Reconnect after a delay
         setTimeout(connectWebSocket, 3000);
     };
 
     // Send keepalive message every 30 seconds
     const keepAliveInterval = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send('keepalive');
+        if (state.ws.readyState === WebSocket.OPEN) {
+            state.ws.send('keepalive');
         }
     }, 30000);
 
-    ws.onerror = (error) => {
+    state.ws.onerror = (error) => {
         console.error('WebSocket error:', error);
     };
 }
@@ -65,9 +125,9 @@ function handleWebSocketMessage(data) {
             loadConversations();
             
             // Additional handling for current conversation
-            if (data.type === 'message_added' && currentConversationId === data.conversation_id) {
+            if (data.type === 'message_added' && state.currentConversationId === data.conversation_id) {
                 loadConversation(data.conversation_id);
-            } else if (data.type === 'conversation_deleted' && currentConversationId === data.conversation_id) {
+            } else if (data.type === 'conversation_deleted' && state.currentConversationId === data.conversation_id) {
                 startNewConversation();
             }
             break;
@@ -97,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('new-conversation-btn')?.addEventListener('click', startNewConversation);
     
     // Initialize scroll handling
-    chatMessages.addEventListener('scroll', handleScroll);
+    elements.chatMessages.addEventListener('scroll', handleScroll);
     handleScroll(); // Check initial scroll position
 
     // Add prompt selector event listener
@@ -116,7 +176,7 @@ document.addEventListener('visibilitychange', () => {
         // Optional: You could close the WebSocket here if desired
     } else {
         // Ensure we have a connection when page becomes visible
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
+        if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
             connectWebSocket();
         }
         loadConversations(); // One-time refresh when returning to the page
@@ -124,10 +184,10 @@ document.addEventListener('visibilitychange', () => {
 });
 
 async function loadConversations() {
-    if (isLoading) return;
+    if (state.isLoading) return;
     
     try {
-        isLoading = true;
+        state.isLoading = true;
         const response = await fetch('/conversations');
         const data = await response.json();
         const conversationsList = document.getElementById('conversations-list');
@@ -165,16 +225,16 @@ async function loadConversations() {
     } catch (error) {
         console.error('Error loading conversations:', error);
     } finally {
-        isLoading = false;
+        state.isLoading = false;
     }
 }
 
 async function updateSystemPrompt() {
     try {
         await loadPrompts(); // Load all available prompts
-        const response = await fetch(`/get_system_prompt?conversation_id=${currentConversationId || ''}`);
+        const response = await fetch(`/get_system_prompt?conversation_id=${state.currentConversationId || ''}`);
         const data = await response.json();
-        document.getElementById('system-prompt').value = data.system_prompt;
+        elements.systemPrompt.value = data.system_prompt;
     } catch (error) {
         console.error('Error fetching system prompt:', error);
     }
@@ -182,23 +242,23 @@ async function updateSystemPrompt() {
 
 async function loadConversation(conversationId) {
     try {
-        currentConversationId = conversationId;
+        state.currentConversationId = conversationId;
         const response = await fetch(`/conversations/${conversationId}`);
         const data = await response.json();
         // Clear current chat
-        chatMessages.innerHTML = '';
+        elements.chatMessages.innerHTML = '';
         
         // Set current conversation ID
-        currentConversationId = conversationId;
+        state.currentConversationId = conversationId;
         
         // Display messages
         for (const msg of data.messages) {
             if (msg.role === 'user') {
                 appendUserMessage(msg.content);
             } else if (msg.role === 'assistant') {
-                currentAssistantMessage = createAssistantMessage();
+                state.currentAssistantMessage = createAssistantMessage();
                 updateAssistantMessage(msg.content);
-                currentAssistantMessage = null;
+                state.currentAssistantMessage = null;
             }
         }
 
@@ -206,7 +266,7 @@ async function loadConversation(conversationId) {
         await updateSystemPrompt();
         
         // Reset scroll state
-        isScrolledManually = false;
+        state.isScrolledManually = false;
         
         // Use setTimeout to ensure all content is rendered before scrolling
         setTimeout(() => {
@@ -221,7 +281,7 @@ async function createNewConversation() {
     try {
         const createResponse = await fetch('/create_conversation', { method: 'POST' });
         const data = await createResponse.json();
-        currentConversationId = data.conversation_id;
+        state.currentConversationId = data.conversation_id;
         loadConversations();
 
         // Reset system prompt by fetching default from API
@@ -233,12 +293,12 @@ async function createNewConversation() {
 
 // Add function to start new conversation
 async function startNewConversation() {
-    chatMessages.innerHTML = '';
-    currentConversationId = null;
-    messageInput.value = '';
-    document.getElementById('file-input').value = '';
-    document.getElementById('file-preview-container').innerHTML = '';
-    document.getElementById('file-preview-container').classList.add('hidden');
+    elements.chatMessages.innerHTML = '';
+    state.currentConversationId = null;
+    elements.messageInput.value = '';
+    elements.fileInput.value = '';
+    elements.filePreviewContainer.innerHTML = '';
+    elements.filePreviewContainer.classList.add('hidden');
     await updateSystemPrompt(); // Fetch system prompt for new conversation
 }
 
@@ -249,51 +309,33 @@ document.addEventListener('DOMContentLoaded', () => {
     startNewConversation(); // Ensure we start with a new conversation
 });
 
-const chatForm = document.getElementById('chat-form');
-const messageInput = document.getElementById('message-input');
-const chatMessages = document.getElementById('chat-messages');
-const jumpToBottomButton = document.getElementById('jump-to-bottom');
-
 function appendUserMessage(content) {
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message-bubble user-message';
     messageDiv.textContent = content;
-    chatMessages.appendChild(messageDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    elements.chatMessages.appendChild(messageDiv);
+    elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
 }
 
 function createAssistantMessage() {
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message-bubble assistant-message';
-    chatMessages.appendChild(messageDiv);
+    elements.chatMessages.appendChild(messageDiv);
     
     // Only scroll to bottom if we haven't manually scrolled up
-    if (!isScrolledManually) {
+    if (!state.isScrolledManually) {
         scrollToBottom();
     }
     return messageDiv;
 }
 
-function copyToClipboard(text) {
-    navigator.clipboard.writeText(text).then(() => {
-        const button = event.target;
-        const originalText = button.textContent;
-        button.textContent = 'Copied!';
-        setTimeout(() => {
-            button.textContent = originalText;
-        }, 2000);
-    }).catch(err => {
-        console.error('Failed to copy:', err);
-    });
-}
-
 function updateAssistantMessage(content) {
-    if (!currentAssistantMessage) {
-        currentAssistantMessage = createAssistantMessage();
+    if (!state.currentAssistantMessage) {
+        state.currentAssistantMessage = createAssistantMessage();
     }
 
     const wasAtBottom = Math.abs(
-        (chatMessages.scrollHeight - chatMessages.clientHeight) - chatMessages.scrollTop
+        (elements.chatMessages.scrollHeight - elements.chatMessages.clientHeight) - elements.chatMessages.scrollTop
     ) < 10;
 
     // Configure marked options
@@ -313,7 +355,7 @@ function updateAssistantMessage(content) {
     });
 
     // Clean up any existing highlights before updating
-    const existingHighlights = currentAssistantMessage.querySelectorAll('pre code');
+    const existingHighlights = state.currentAssistantMessage.querySelectorAll('pre code');
     existingHighlights.forEach(block => {
         block.parentElement.removeChild(block);
     });
@@ -327,10 +369,10 @@ function updateAssistantMessage(content) {
         '<pre><code class="hljs $1">'
     );
 
-    currentAssistantMessage.innerHTML = parsedContent;
+    state.currentAssistantMessage.innerHTML = parsedContent;
 
     // Re-apply syntax highlighting to all code blocks
-    currentAssistantMessage.querySelectorAll('pre code').forEach(block => {
+    state.currentAssistantMessage.querySelectorAll('pre code').forEach(block => {
         // Remove any previous copy buttons
         const pre = block.parentNode;
         const oldButton = pre.querySelector('.copy-button');
@@ -352,62 +394,60 @@ function updateAssistantMessage(content) {
         pre.appendChild(copyButton);
     });
 
-    if (wasAtBottom && !isScrolledManually) {
+    if (wasAtBottom && !state.isScrolledManually) {
         scrollToBottom();
     } else if (!wasAtBottom) {
-        jumpToBottomButton.classList.add('visible');
+        elements.jumpToBottomButton.classList.add('visible');
     }
 }
 
 // Add this new event listener for Enter key
-messageInput.addEventListener('keypress', function(e) {
+elements.messageInput.addEventListener('keypress', function(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        chatForm.requestSubmit();
+        elements.chatForm.requestSubmit();
     }
 });
 
-chatForm.addEventListener('submit', async (e) => {
+elements.chatForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const message = messageInput.value.trim();
-    const fileInput = document.getElementById('file-input');
-    const files = fileInput.files;
-    const sendButton = document.getElementById('send-button');
+    const message = elements.messageInput.value.trim();
+    const files = elements.fileInput.files;
     
     if (!message && !files.length) return;
 
-    messageInput.value = '';
-    sendButton.disabled = true;
+    elements.messageInput.value = '';
+    elements.sendButton.disabled = true;
     
     try {
-        if (!currentConversationId) {
+        if (!state.currentConversationId) {
             const createResponse = await fetch('/create_conversation', { method: 'POST' });
             const data = await createResponse.json();
             
-            currentConversationId = data.conversation_id;
+            state.currentConversationId = data.conversation_id;
             loadConversations();
         }
 
         appendUserMessage(message);
         
         // Clear file previews
-        document.getElementById('file-preview-container').innerHTML = '';
-        document.getElementById('file-preview-container').classList.add('hidden');
+        elements.filePreviewContainer.innerHTML = '';
+        elements.filePreviewContainer.classList.add('hidden');
         
         // Create FormData and append all data
         const formData = new FormData();
         formData.append('message', message);
-        formData.append('system_prompt', document.getElementById('system-prompt').value.trim() || 'You are a helpful assistant');
-        formData.append('conversation_id', currentConversationId);
+        formData.append('system_prompt', elements.systemPrompt.value.trim() || 'You are a helpful assistant');
+        formData.append('conversation_id', state.currentConversationId);
         
         Array.from(files).forEach(file => {
             formData.append('files', file);
         });
 
-        fileInput.value = '';
+        elements.fileInput.value = '';
 
         // Create assistant message bubble immediately
-        currentAssistantMessage = createAssistantMessage();
+        state.currentAssistantMessage = createAssistantMessage();
         let responseText = '';
 
         const response = await fetch('/chat', {
@@ -433,9 +473,9 @@ chatForm.addEventListener('submit', async (e) => {
             // Only scroll to bottom on first chunk if we're already at bottom
             if (isFirstChunk) {
                 const isAtBottom = Math.abs(
-                    (chatMessages.scrollHeight - chatMessages.clientHeight) - chatMessages.scrollTop
+                    (elements.chatMessages.scrollHeight - elements.chatMessages.clientHeight) - elements.chatMessages.scrollTop
                 ) < 10;
-                isScrolledManually = !isAtBottom;
+                state.isScrolledManually = !isAtBottom;
                 isFirstChunk = false;
             }
             
@@ -443,31 +483,31 @@ chatForm.addEventListener('submit', async (e) => {
             updateAssistantMessage(responseText);
             
             // Only auto-scroll if user hasn't scrolled up
-            if (!isScrolledManually) {
+            if (!state.isScrolledManually) {
                 scrollToBottom();
             }
         }
 
     } catch (error) {
         console.error('Error:', error);
-        currentAssistantMessage = null;
+        state.currentAssistantMessage = null;
         appendMessage('Sorry, something went wrong. ' + error.message, 'assistant');
     } finally {
-        sendButton.disabled = false;
+        elements.sendButton.disabled = false;
         
         // After streaming is complete, check if we should show jump-to-bottom button
         const isAtBottom = Math.abs(
-            (chatMessages.scrollHeight - chatMessages.clientHeight) - chatMessages.scrollTop
+            (elements.chatMessages.scrollHeight - elements.chatMessages.clientHeight) - elements.chatMessages.scrollTop
         ) < 10;
         if (!isAtBottom) {
-            jumpToBottomButton.classList.add('visible');
+            elements.jumpToBottomButton.classList.add('visible');
         }
     }
 });
 
-document.getElementById('file-input').addEventListener('change', async (e) => {
+elements.fileInput.addEventListener('change', async (e) => {
     const files = Array.from(e.target.files);
-    const previewContainer = document.getElementById('file-preview-container');
+    const previewContainer = elements.filePreviewContainer;
     previewContainer.innerHTML = '';
     uploadedFiles = [];
 
@@ -540,7 +580,7 @@ async function deleteConversation(conversationId, event) {
         
         if (response.ok) {
             // If we're currently viewing this conversation, start a new one
-            if (currentConversationId === conversationId) {
+            if (state.currentConversationId === conversationId) {
                 startNewConversation();
             }
             await loadConversations(); // Refresh the list
@@ -571,34 +611,34 @@ async function loadVersion() {
 
 // Add this function to handle scrolling
 function handleScroll() {
-    const currentScrollTop = chatMessages.scrollTop;
-    const maxScroll = chatMessages.scrollHeight - chatMessages.clientHeight;
+    const currentScrollTop = elements.chatMessages.scrollTop;
+    const maxScroll = elements.chatMessages.scrollHeight - elements.chatMessages.clientHeight;
     const isAtBottom = Math.abs(maxScroll - currentScrollTop) < 10;
     
     // Only set isScrolledManually if user is scrolling up
-    if (currentScrollTop < lastScrollTop && !isAtBottom) {
-        isScrolledManually = true;
+    if (currentScrollTop < state.lastScrollTop && !isAtBottom) {
+        state.isScrolledManually = true;
     }
     
     // Show/hide jump to bottom button
     if (!isAtBottom) {
-        jumpToBottomButton.classList.add('visible');
+        elements.jumpToBottomButton.classList.add('visible');
     } else {
-        jumpToBottomButton.classList.remove('visible');
-        isScrolledManually = false;
+        elements.jumpToBottomButton.classList.remove('visible');
+        state.isScrolledManually = false;
     }
     
-    lastScrollTop = currentScrollTop;
+    state.lastScrollTop = currentScrollTop;
 }
 
 // Add scroll event listener
-chatMessages.addEventListener('scroll', handleScroll);
+elements.chatMessages.addEventListener('scroll', handleScroll);
 
 // Update scrollToBottom function
 function scrollToBottom() {
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-    isScrolledManually = false;
-    jumpToBottomButton.classList.remove('visible');
+    elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+    state.isScrolledManually = false;
+    elements.jumpToBottomButton.classList.remove('visible');
 }
 
 // Update your message handling functions to respect manual scrolling
@@ -606,7 +646,7 @@ function appendMessage(role, content) {
     // ...existing message appending code...
     
     // Only auto-scroll if user hasn't scrolled manually
-    if (!isScrolledManually) {
+    if (!state.isScrolledManually) {
         scrollToBottom();
     }
 }
@@ -626,7 +666,7 @@ async function handleStream(response) {
             // ...existing streaming code...
             
             // Only auto-scroll if user hasn't scrolled manually
-            if (!isScrolledManually) {
+            if (!state.isScrolledManually) {
                 scrollToBottom();
             }
         }
@@ -640,9 +680,9 @@ async function handleStream(response) {
 
 // Initialize settings panel
 async function initializeSettings() {
-    if (isInitializingSettings) return;
+    if (state.isInitializingSettings) return;
     try {
-        isInitializingSettings = true;
+        state.isInitializingSettings = true;
         
         // Get all available settings
         const response = await fetch('/settings/all');
@@ -706,7 +746,7 @@ async function initializeSettings() {
         console.error('Failed to initialize settings:', error);
         alert('Error loading settings configurations');
     } finally {
-        isInitializingSettings = false;
+        state.isInitializingSettings = false;
     }
 }
 
@@ -720,8 +760,8 @@ async function loadSettingsConfig(id) {
         updateSettingsForm(settings);
         
         // Store current and original settings
-        currentSettings = settings;
-        originalSettings = {...settings};
+        state.currentSettings = settings;
+        state.originalSettings = {...settings};
         
         // Set this configuration as default automatically
         await fetch(`/settings/${id}/set_default`, { method: 'POST' });
@@ -750,46 +790,16 @@ function updateSettingsForm(settings) {
 
 // Create new settings configuration
 async function createNewSettingsConfig() {
-    try {
-        // Get default values
-        const response = await fetch('/default_settings');
-        if (!response.ok) throw new Error('Failed to fetch default values');
-        
-        const defaults = await response.json();
-        
-        // Get name from user
-        const name = prompt('Enter name for new configuration:');
-        if (!name?.trim()) {
-            alert('Configuration name is required');
-            return;
-        }
-        
-        // Update form with default values and new name without saving
-        updateSettingsForm({
-            ...defaults,
-            name: name.trim(),
-            id: 'new' // Special marker for new unsaved config
-        });
-        
-        // Update stored settings state
-        currentSettings = {
-            ...defaults,
-            name: name.trim(),
-            id: 'new'
-        };
-        originalSettings = null; // This will make the form show as "unsaved"
-        
-        // Show the unsaved changes warning
-        document.getElementById('settings-warning').classList.remove('hidden');
-        
-    } catch (error) {
-        console.error('Failed to load default settings:', error);
-        alert('Error creating new configuration');
-    }
+    openSettingsModal();
 }
 
 // Update saveSettings function to remove default toggle handling
 async function saveSettings() {
+    const saveButton = document.getElementById('settings-warning')?.querySelector('button');
+    if (saveButton) {
+        saveButton.disabled = true;
+    }
+    
     try {
         const settings = {
             name: document.getElementById('config-name').value.trim(),
@@ -810,7 +820,7 @@ async function saveSettings() {
         let result;
         
         // If this is a new configuration
-        if (currentSettings.id === 'new') {
+        if (state.currentSettings.id === 'new') {
             response = await fetch('/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -818,7 +828,7 @@ async function saveSettings() {
             });
         } else {
             // Update existing configuration
-            settings.id = currentSettings.id;
+            settings.id = state.currentSettings.id;
             response = await fetch(`/settings/${settings.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -833,7 +843,7 @@ async function saveSettings() {
         result = await response.json();
         
         // For new settings, we need the ID from the response
-        const settingsId = currentSettings.id === 'new' ? result.id : settings.id;
+        const settingsId = state.currentSettings.id === 'new' ? result.id : settings.id;
         
         // Set as default automatically
         const defaultResponse = await fetch(`/settings/${settingsId}/set_default`, {
@@ -845,11 +855,11 @@ async function saveSettings() {
         }
 
         // Update the current settings state
-        currentSettings = {
+        state.currentSettings = {
             ...settings,
             id: settingsId
         };
-        originalSettings = {...currentSettings};
+        state.originalSettings = {...state.currentSettings};
         
         // Hide the warning since we just saved
         document.getElementById('settings-warning').classList.add('hidden');
@@ -858,11 +868,56 @@ async function saveSettings() {
         await initializeSettings();
         document.getElementById('settings-selector').value = settingsId;
         
-        alert('Settings saved successfully');
+        // Show success feedback
+        const successNotification = document.createElement('div');
+        successNotification.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-2 animate-fade-in';
+        successNotification.innerHTML = `
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span>Settings saved successfully</span>
+        `;
+        
+        document.body.appendChild(successNotification);
+        
+        // Add fade out animation
+        setTimeout(() => {
+            successNotification.classList.add('opacity-0', 'transform', 'translate-y-[-1rem]');
+            successNotification.style.transition = 'all 0.5s ease-out';
+        }, 1500);
+        
+        // Remove the notification after animation
+        setTimeout(() => {
+            successNotification.remove();
+        }, 2000);
         
     } catch (error) {
         console.error('Failed to save settings:', error);
-        alert('Error saving settings: ' + error.message);
+        
+        // Show error notification
+        const errorNotification = document.createElement('div');
+        errorNotification.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-2 animate-fade-in';
+        errorNotification.innerHTML = `
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            <span>Error saving settings: ${error.message}</span>
+        `;
+        
+        document.body.appendChild(errorNotification);
+        
+        setTimeout(() => {
+            errorNotification.classList.add('opacity-0', 'transform', 'translate-y-[-1rem]');
+            errorNotification.style.transition = 'all 0.5s ease-out';
+        }, 3000);
+        
+        setTimeout(() => {
+            errorNotification.remove();
+        }, 3500);
+    } finally {
+        if (saveButton) {
+            saveButton.disabled = false;
+        }
     }
 }
 
@@ -880,7 +935,7 @@ function addSettingsChangeListeners() {
 
 // Check if settings have changed
 function checkSettingsChanged() {
-    if (!originalSettings) return;
+    if (!state.originalSettings) return;
     
     const current = {
         id: document.getElementById('settings-selector').value,
@@ -893,7 +948,7 @@ function checkSettingsChanged() {
         api_key: document.getElementById('api-key').value.trim()
     };
     
-    const hasChanged = JSON.stringify(current) !== JSON.stringify(originalSettings);
+    const hasChanged = JSON.stringify(current) !== JSON.stringify(state.originalSettings);
     document.getElementById('settings-warning').classList.toggle('hidden', !hasChanged);
 }
 
@@ -911,7 +966,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Add event listeners
     document.getElementById('new-conversation-btn')?.addEventListener('click', startNewConversation);
-    chatMessages.addEventListener('scroll', handleScroll);
+    elements.chatMessages.addEventListener('scroll', handleScroll);
     handleScroll();
 }, { once: true }); // Add {once: true} to ensure it only runs once
 
@@ -947,7 +1002,7 @@ async function loadPrompts() {
 
         // If we found an active prompt, set its content
         if (activePrompt) {
-            document.getElementById('system-prompt').value = activePrompt.content;
+            elements.systemPrompt.value = activePrompt.content;
         } else if (data.prompts.length > 0 && !foundActive) {
             // If no prompt is marked as active, activate the first one
             const firstPrompt = data.prompts[0];
@@ -983,7 +1038,7 @@ async function handlePromptChange(event) {
 }
 
 function openPromptModal(promptId = null) {
-    editingPromptId = promptId;
+    state.editingPromptId = promptId;
     const modal = document.getElementById('prompt-modal');
     const title = document.getElementById('prompt-modal-title');
     const nameInput = document.getElementById('prompt-name');
@@ -1012,7 +1067,7 @@ function closePromptModal() {
     const modal = document.getElementById('prompt-modal');
     modal.classList.add('hidden');
     modal.classList.remove('flex');
-    editingPromptId = null;
+    state.editingPromptId = null;
 }
 
 // Add form submit handler for the prompt modal
@@ -1029,8 +1084,8 @@ document.getElementById('prompt-form').addEventListener('submit', async (e) => {
     
     try {
         let response;
-        if (editingPromptId) {
-            response = await fetch(`/prompts/${editingPromptId}`, {
+        if (state.editingPromptId) {
+            response = await fetch(`/prompts/${state.editingPromptId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(promptData)
@@ -1067,7 +1122,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Add event listeners for prompts
     document.getElementById('prompt-selector')?.addEventListener('change', handlePromptChange);
-    document.getElementById('system-prompt')?.addEventListener('input', handlePromptTextChange);
+    elements.systemPrompt?.addEventListener('input', handlePromptTextChange);
     document.getElementById('save-prompt-button')?.addEventListener('click', savePromptChanges);
     
     // Add handlers for prompt modal
@@ -1082,25 +1137,30 @@ document.addEventListener('DOMContentLoaded', () => {
 }, { once: true });
 
 function handlePromptTextChange() {
-    const promptText = document.getElementById('system-prompt').value;
+    const promptText = elements.systemPrompt.value;
     const saveButton = document.getElementById('save-prompt-button');
     
-    if (promptText !== originalPromptText) {
+    if (promptText !== state.originalPromptText) {
         saveButton.classList.remove('hidden');
-        isPromptEdited = true;
+        saveButton.classList.add('animate-pulse');  // Add pulse animation
+        state.isPromptEdited = true;
     } else {
         saveButton.classList.add('hidden');
-        isPromptEdited = false;
+        saveButton.classList.remove('animate-pulse');
+        state.isPromptEdited = false;
     }
 }
 
 async function savePromptChanges() {
-    const promptSelector = document.getElementById('prompt-selector');
-    const promptId = promptSelector.value;
-    const promptText = document.getElementById('system-prompt').value;
-    const promptName = promptSelector.options[promptSelector.selectedIndex].text;
+    const saveButton = document.getElementById('save-prompt-button');
+    saveButton.disabled = true;
     
     try {
+        const promptSelector = document.getElementById('prompt-selector');
+        const promptId = promptSelector.value;
+        const promptText = elements.systemPrompt.value;
+        const promptName = promptSelector.options[promptSelector.selectedIndex].text;
+        
         const response = await fetch(`/prompts/${promptId}`, {
             method: 'PUT',
             headers: {
@@ -1114,13 +1174,23 @@ async function savePromptChanges() {
         
         if (!response.ok) throw new Error('Failed to save prompt');
         
-        originalPromptText = promptText;
-        document.getElementById('save-prompt-button').classList.add('hidden');
-        isPromptEdited = false;
+        state.originalPromptText = promptText;
+        saveButton.classList.add('hidden');
+        saveButton.classList.remove('animate-pulse');
+        state.isPromptEdited = false;
+        
+        // Show success feedback
+        const checkIcon = document.createElement('div');
+        checkIcon.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-fade-in-out';
+        checkIcon.textContent = '✓ Prompt saved';
+        document.body.appendChild(checkIcon);
+        setTimeout(() => checkIcon.remove(), 2000);
         
     } catch (error) {
         console.error('Error saving prompt:', error);
         alert('Failed to save prompt changes');
+    } finally {
+        saveButton.disabled = false;
     }
 }
 
@@ -1130,13 +1200,108 @@ async function loadPromptContent(promptId) {
         if (!response.ok) throw new Error('Failed to load prompt');
         
         const data = await response.json();
-        const systemPrompt = document.getElementById('system-prompt');
+        const systemPrompt = elements.systemPrompt;
         systemPrompt.value = data.content;
-        originalPromptText = data.content;
+        state.originalPromptText = data.content;
         document.getElementById('save-prompt-button').classList.add('hidden');
-        isPromptEdited = false;
+        state.isPromptEdited = false;
         
     } catch (error) {
         console.error('Error loading prompt:', error);
     }
 }
+
+// ...existing code...
+
+function openSettingsModal() {
+    const modal = document.getElementById('settings-modal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    
+    // Clear and focus the input
+    const nameInput = document.getElementById('new-config-name');
+    nameInput.value = '';
+    nameInput.focus();
+}
+
+function closeSettingsModal() {
+    const modal = document.getElementById('settings-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+// Replace the old createNewSettingsConfig function with this one
+async function createNewSettingsConfig() {
+    openSettingsModal();
+}
+
+// Add new form submit handler for the settings modal
+document.getElementById('new-settings-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const name = document.getElementById('new-config-name').value.trim();
+    const template = document.getElementById('settings-template').value;
+    
+    if (!name) {
+        alert('Configuration name is required');
+        return;
+    }
+    
+    try {
+        let defaultSettings;
+        
+        if (template === 'copy-current') {
+            // Use current settings as template
+            defaultSettings = {
+                ...state.currentSettings,
+                name: name,
+                id: 'new'
+            };
+        } else {
+            // Fetch default template
+            const response = await fetch('/default_settings');
+            if (!response.ok) throw new Error('Failed to fetch default values');
+            defaultSettings = await response.json();
+            defaultSettings.name = name;
+            defaultSettings.id = 'new';
+        }
+        
+        // Update form with new settings
+        updateSettingsForm(defaultSettings);
+        
+        // Update stored settings state
+        state.currentSettings = defaultSettings;
+        state.originalSettings = null;
+        
+        // Show the unsaved changes warning
+        document.getElementById('settings-warning').classList.remove('hidden');
+        
+        closeSettingsModal();
+        
+    } catch (error) {
+        console.error('Failed to create new settings:', error);
+        alert('Error creating new configuration');
+    }
+});
+
+// Add click handler to close modal when clicking outside
+document.getElementById('settings-modal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'settings-modal') {
+        closeSettingsModal();
+    }
+});
+
+// Update DOM Content Loaded event listener to include modal handlers
+document.addEventListener('DOMContentLoaded', () => {
+    // ...existing initialization code...
+    
+    // Add settings modal close on escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeSettingsModal();
+        }
+    });
+    
+}, { once: true });
+
+// ...existing code...

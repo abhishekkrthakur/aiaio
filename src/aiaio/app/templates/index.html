@@ -59,6 +59,22 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
+        /* Base styles */
+        :root {
+            --primary-color: #3b82f6;
+            --primary-hover: #2563eb;
+            --bg-light: #f8fafc;
+            --bg-dark: #1e293b;
+        }
+
+        /* Layout */
+        .chat-container {
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Message bubbles */
         .message-bubble {
             max-width: 85%;
             margin: 4px;
@@ -68,8 +84,9 @@
             position: relative;
             box-shadow: 0 1px 2px rgba(0,0,0,0.1);
             word-wrap: break-word;
-            font-size: 0.9rem; /* Add this line to make the font smaller */
+            font-size: 0.9rem;
         }
+
         .user-message {
             margin-left: auto;
             background: #f0f0f0;
@@ -599,35 +616,40 @@
                 <div class="flex-none border-b border-gray-200 dark:border-gray-700">
                     <div class="p-3 sm:p-4">
                         <button onclick="toggleSystemPrompt()" 
-                                class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 mb-2 hover:text-gray-900 dark:hover:text-gray-200">
-                            <svg id="system-prompt-chevron" class="w-4 h-4 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mb-3 hover:text-gray-900 dark:hover:text-gray-200 transition-colors duration-200 group">
+                            <svg id="system-prompt-chevron" class="w-4 h-4 transform transition-transform duration-200 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                             </svg>
-                            System Prompt
+                            <span class="font-medium">System Prompt</span>
                         </button>
-                        <div id="system-prompt-container" class="transition-all duration-200 overflow-hidden">
-                            <!-- Add prompt selector -->
-                            <div class="mb-2 flex items-center gap-2">
+                        <div id="system-prompt-container" class="transition-all duration-300 overflow-hidden space-y-3">
+                            <!-- Prompt selector group -->
+                            <div class="flex items-center gap-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
                                 <select id="prompt-selector" 
-                                        class="flex-1 p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+                                        class="flex-1 p-2 text-sm border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 hover:border-blue-500 dark:hover:border-blue-500 transition-colors duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/20">
                                 </select>
                                 <button onclick="openPromptModal()" 
-                                        class="p-2 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                                        class="p-2 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-white dark:hover:bg-gray-600 transition-all duration-200"
                                         title="Create new prompt">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                                     </svg>
                                 </button>
                             </div>
 
-                            <!-- Add prompt text with save button -->
-                            <div class="relative">
+                            <!-- Prompt text area group -->
+                            <div class="relative group">
                                 <textarea id="system-prompt" 
-                                    class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" 
-                                    rows="2"
+                                    class="w-full p-3 text-sm border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100
+                                           hover:border-blue-500 dark:hover:border-blue-500 transition-colors duration-200
+                                           focus:outline-none focus:ring-2 focus:ring-blue-500/20" 
+                                    rows="3"
                                     placeholder="Enter system prompt..."></textarea>
                                 <button id="save-prompt-button"
-                                        class="absolute right-2 top-2 p-1 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 hidden"
+                                        class="absolute right-2 top-2 p-1.5 text-gray-400 hover:text-blue-600 
+                                               bg-white dark:bg-gray-700 rounded-lg hover:bg-gray-50 
+                                               dark:hover:bg-gray-600 opacity-0 group-hover:opacity-100 
+                                               transition-all duration-200 hidden"
                                         title="Save changes">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
@@ -816,46 +838,76 @@
         </div>
     </div>
 
+    <!-- Add Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-96 max-w-[90%]" onclick="event.stopPropagation()">
+            <h3 class="text-lg font-semibold mb-4">Create New Settings Configuration</h3>
+            <form id="new-settings-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Configuration Name</label>
+                    <input type="text" id="new-config-name" 
+                        class="w-full p-2 text-sm border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                        required
+                        placeholder="Enter configuration name">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Template</label>
+                    <select id="settings-template" 
+                            class="w-full p-2 text-sm border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+                        <option value="default">Default Settings</option>
+                        <option value="copy-current">Copy Current Settings</option>
+                    </select>
+                </div>
+                <div class="flex justify-end gap-2 mt-4">
+                    <button type="button" onclick="closeSettingsModal()"
+                            class="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                        Create
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
     <script src="/static/script.js?cb={{ time }}" defer></script>
     <script>
     function toggleSystemPrompt() {
         const container = document.getElementById('system-prompt-container');
         const chevron = document.getElementById('system-prompt-chevron');
-        const textarea = document.getElementById('system-prompt');
         
-        // Toggle the collapsed state
-        const isCollapsed = container.classList.toggle('h-0');
-        
-        if (isCollapsed) {
-            container.classList.add('mb-0');
-            chevron.classList.remove('rotate-180');
-            textarea.classList.add('hidden');
-        } else {
-            container.classList.remove('mb-0');
+        // Toggle the collapsed state with a smoother height transition
+        if (!container.style.maxHeight || container.style.maxHeight === '0px') {
+            container.style.maxHeight = container.scrollHeight + 'px';
+            container.classList.remove('opacity-0');
             chevron.classList.add('rotate-180');
-            textarea.classList.remove('hidden');
+        } else {
+            container.style.maxHeight = '0px';
+            container.classList.add('opacity-0');
+            chevron.classList.remove('rotate-180');
         }
         
         // Save preference to localStorage
-        localStorage.setItem('systemPromptCollapsed', isCollapsed);
+        localStorage.setItem('systemPromptCollapsed', container.style.maxHeight === '0px');
     }
 
     // Set initial state on page load
     document.addEventListener('DOMContentLoaded', () => {
-        const isCollapsed = localStorage.getItem('systemPromptCollapsed');
-        // If no preference is stored, or if preference is true, collapse it
-        if (isCollapsed === null || isCollapsed === 'true') {
-            const container = document.getElementById('system-prompt-container');
-            const chevron = document.getElementById('system-prompt-chevron');
-            const textarea = document.getElementById('system-prompt');
-            
-            container.classList.add('h-0', 'mb-0');
-            textarea.classList.add('hidden');
+        const container = document.getElementById('system-prompt-container');
+        const chevron = document.getElementById('system-prompt-chevron');
+        const isCollapsed = localStorage.getItem('systemPromptCollapsed') === 'true';
+        
+        if (isCollapsed) {
+            container.style.maxHeight = '0px';
+            container.classList.add('opacity-0');
         } else {
-            document.getElementById('system-prompt-chevron').classList.add('rotate-180');
+            container.style.maxHeight = container.scrollHeight + 'px';
+            chevron.classList.add('rotate-180');
         }
-    });
+    }, { once: true });
 
     function toggleSettingsSidebar() {
         const sidebar = document.querySelector('.settings-sidebar');
