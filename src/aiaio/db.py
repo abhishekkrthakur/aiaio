@@ -57,16 +57,6 @@ CREATE TABLE system_prompts (
     is_active BOOLEAN DEFAULT false,
     created_at REAL DEFAULT (strftime('%s.%f', 'now'))
 );
-
--- Insert default settings
-INSERT INTO settings (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
-VALUES ('default', true, 1.0, 4096, 0.95, 'http://localhost:8000/v1', 'meta-llama/Llama-3.2-1B-Instruct', '');
-
--- Initial system prompts
-INSERT INTO system_prompts (prompt_name, prompt_text, is_active)
-VALUES
-    ('summary', ?, false),
-    ('default', ?, true);
 """
 
 
@@ -99,52 +89,81 @@ class ChatDatabase:
 
         with sqlite3.connect(self.db_path) as conn:
             if not db_exists:
-                # Execute schema first
-                schema_sql = _DB.split("-- Initial system prompts")[0]
-                conn.executescript(schema_sql)
+                # Execute schema
+                conn.executescript(_DB)
 
-                # Then insert settings
-                conn.execute(
-                    """INSERT INTO settings
-                       (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        "default",
-                        True,
-                        1.0,
-                        4096,
-                        0.95,
-                        "http://localhost:8000/v1",
-                        "meta-llama/Llama-3.2-1B-Instruct",
-                        "",
-                    ),
-                )
+                # Insert default settings only if no settings exist
+                settings_count = conn.execute("SELECT COUNT(*) FROM settings").fetchone()[0]
+                if settings_count == 0:
+                    conn.execute(
+                        """INSERT INTO settings
+                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            "default",
+                            True,
+                            1.0,
+                            4096,
+                            0.95,
+                            "http://localhost:8000/v1",
+                            "meta-llama/Llama-3.2-1B-Instruct",
+                            "",
+                        ),
+                    )
 
-                # Finally insert system prompts
+                # Insert system prompts
                 conn.execute(
                     """INSERT INTO system_prompts (prompt_name, prompt_text, is_active)
                        VALUES (?, ?, ?)""",
-                    ("summary", SYSTEM_PROMPTS["summary"], False),
+                    ("summary", SYSTEM_PROMPTS["summary"].strip(), False),
                 )
                 conn.execute(
                     """INSERT INTO system_prompts (prompt_name, prompt_text, is_active)
                        VALUES (?, ?, ?)""",
-                    ("default", SYSTEM_PROMPTS["default"], True),
+                    ("default", SYSTEM_PROMPTS["default"].strip(), True),
                 )
             else:
-                # Check if tables exist
+                # Check if tables exist and create if missing
                 tables = conn.execute(
                     """SELECT name FROM sqlite_master
                        WHERE type='table' AND
                        name IN ('conversations', 'messages', 'attachments', 'settings', 'system_prompts')"""
                 ).fetchall()
-                if len(tables) < 5:
-                    conn.executescript(_DB)
-                else:
-                    # Check if summary column exists
-                    columns = conn.execute("PRAGMA table_info(conversations)").fetchall()
-                    if "summary" not in [col[1] for col in columns]:
-                        conn.execute("ALTER TABLE conversations ADD COLUMN summary TEXT")
+                existing_tables = [table[0] for table in tables]
+
+                if len(existing_tables) < 5:
+                    missing_tables = _DB.split(";")
+                    for create_stmt in missing_tables:
+                        if create_stmt.strip():
+                            # Extract table name from CREATE TABLE statement
+                            table_name = create_stmt.split("CREATE TABLE")[1].split("(")[0].strip()
+                            if table_name not in existing_tables:
+                                conn.execute(create_stmt)
+
+                    # Insert default settings if settings table was just created
+                    if "settings" not in existing_tables:
+                        settings_count = conn.execute("SELECT COUNT(*) FROM settings").fetchone()[0]
+                        if settings_count == 0:
+                            conn.execute(
+                                """INSERT INTO settings
+                                   (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
+                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                                (
+                                    "default",
+                                    True,
+                                    1.0,
+                                    4096,
+                                    0.95,
+                                    "http://localhost:8000/v1",
+                                    "meta-llama/Llama-3.2-1B-Instruct",
+                                    "",
+                                ),
+                            )
+
+                # Check if summary column exists
+                columns = conn.execute("PRAGMA table_info(conversations)").fetchall()
+                if "summary" not in [col[1] for col in columns]:
+                    conn.execute("ALTER TABLE conversations ADD COLUMN summary TEXT")
 
     def create_conversation(self) -> str:
         """Create a new conversation.
