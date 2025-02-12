@@ -156,6 +156,17 @@ class PromptInput(BaseModel):
     text: str
 
 
+class MessageEdit(BaseModel):
+    """
+    Pydantic model for message edit requests.
+
+    Attributes:
+        content (str): New message content
+    """
+
+    content: str
+
+
 async def text_streamer(messages: List[Dict[str, str]]):
     """
     Stream text responses from the AI model.
@@ -337,6 +348,69 @@ async def add_message(conversation_id: str, message: MessageInput):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.put("/messages/{message_id}")
+async def edit_message(message_id: str, edit: MessageEdit):
+    """
+    Edit an existing message.
+
+    Args:
+        message_id (str): ID of the message to edit
+        edit (MessageEdit): New message content
+
+    Returns:
+        dict: Operation status
+
+    Raises:
+        HTTPException: If message not found or edit not allowed
+    """
+    try:
+        success = db.edit_message(message_id, edit.content)
+        if not success:
+            raise HTTPException(status_code=404, detail="Message not found")
+
+        # Get message role to send in broadcast
+        with sqlite3.connect(db.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            msg = conn.execute("SELECT role FROM messages WHERE message_id = ?", (message_id,)).fetchone()
+
+        # Broadcast update to all connected clients
+        await manager.broadcast(
+            {"type": "message_edited", "message_id": message_id, "content": edit.content, "role": msg["role"]}
+        )
+
+        return {"status": "success"}
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/messages/{message_id}/raw")
+async def get_raw_message(message_id: str):
+    """Get the raw content of a message.
+
+    Args:
+        message_id (str): ID of the message to retrieve
+
+    Returns:
+        dict: Message content
+
+    Raises:
+        HTTPException: If message not found
+    """
+    try:
+        with sqlite3.connect(db.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            message = conn.execute("SELECT content FROM messages WHERE message_id = ?", (message_id,)).fetchone()
+
+            if not message:
+                raise HTTPException(status_code=404, detail="Message not found")
+
+            return {"content": message["content"]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.delete("/conversations/{conversation_id}")
 async def delete_conversation(conversation_id: str):
     """
@@ -374,6 +448,8 @@ async def save_settings(settings: SettingsInput):
     """
     try:
         settings_dict = settings.model_dump()
+        settings_dict["updated_at"] = time.time()  # Add timestamp
+        settings_dict["created_at"] = time.time()  # Add creation timestamp for new settings
         db.save_settings(settings_dict)
         return {"status": "success"}
     except sqlite3.IntegrityError as e:
@@ -419,6 +495,8 @@ async def create_settings(settings: SettingsInput):
     """
     try:
         settings_dict = settings.model_dump()
+        settings_dict["updated_at"] = time.time()  # Add timestamp
+        settings_dict["created_at"] = time.time()  # Add creation timestamp
         settings_id = db.add_settings(settings_dict)
         return {"status": "success", "id": settings_id}
     except sqlite3.IntegrityError as e:
@@ -444,6 +522,8 @@ async def update_settings(settings_id: int, settings: SettingsInput):
     try:
         settings_dict = settings.model_dump()
         settings_dict["id"] = settings_id
+        settings_dict["updated_at"] = time.time()  # Add timestamp
+        settings_dict["created_at"] = time.time()  # Add creation timestamp
         success = db.save_settings(settings_dict)
         if not success:
             raise HTTPException(status_code=404, detail="Settings not found")
@@ -709,6 +789,85 @@ async def chat(
                 )
             except Exception as e:
                 logger.error(f"Failed to generate summary: {e}")
+
+        return StreamingResponse(
+            process_and_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # Disable Nginx buffering
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Error in chat endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/regenerate_response", response_class=StreamingResponse)
+async def chat_again(
+    message: str = Form(...),
+    system_prompt: str = Form(...),
+    conversation_id: str = Form(...),
+    message_id: str = Form(...),
+):
+    """
+    This endpoint is used to regenerate the response of a message in a conversation at any point in time.
+
+    Args:
+        message (str): User's message
+        system_prompt (str): System instructions for the AI
+        conversation_id (str): Unique identifier for the conversation
+        message_id (str): ID of the message to regenerate. This message will be replaced with the new response.
+
+    Returns:
+        StreamingResponse: Server-sent events stream of AI responses
+
+    Raises:
+        HTTPException: If there's an error processing the request
+    """
+    try:
+        logger.info(
+            f"Regenerate request: message='{message}' conv_id={conversation_id} system_prompt='{system_prompt}'"
+        )
+
+        # Verify conversation exists
+        history = db.get_conversation_history_upto_message_id(conversation_id, message_id)
+        logger.info(history)
+
+        if not history:
+            logger.error("No conversation history found")
+            raise HTTPException(status_code=404, detail="No conversation history found")
+
+        system_role_messages = [m for m in history if m["role"] == "system"]
+        last_system_message = system_role_messages[-1]["content"] if system_role_messages else ""
+        if last_system_message != system_prompt:
+            db.add_message(conversation_id=conversation_id, role="system", content=system_prompt)
+
+        async def process_and_stream():
+            """
+            Inner generator function to process the chat and stream responses.
+
+            Yields:
+                str: Chunks of the AI response
+            """
+            full_response = ""
+            async for chunk in text_streamer(history):
+                full_response += chunk
+                yield chunk
+                await asyncio.sleep(0)  # Ensure chunks are flushed immediately
+
+            # Store the complete response
+            db.edit_message(message_id, full_response)
+
+            # Broadcast update after storing the response
+            await manager.broadcast(
+                {
+                    "type": "message_added",
+                    "conversation_id": conversation_id,
+                }
+            )
 
         return StreamingResponse(
             process_and_stream(),

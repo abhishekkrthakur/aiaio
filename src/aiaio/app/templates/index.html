@@ -105,6 +105,7 @@
             color: #1a1a1a;
             border-bottom-left-radius: 4px;
             line-height: 1.6;
+            position: relative;  /* Ensure position is relative for absolute button positioning */
         }
         .dark .assistant-message {
             background: #2d3748;
@@ -555,6 +556,37 @@
                 transform: translateY(0);
             }
         }
+
+        /* Add styles for regenerate button */
+        .regenerate-button {
+            position: absolute;
+            top: 2px;
+            right: 32px; /* Position to the left of edit button */
+            padding: 4px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            color: #6b7280;
+            border-radius: 4px;
+        }
+
+        .regenerate-button:hover {
+            color: #3b82f6;
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+
+        .group:hover .regenerate-button {
+            opacity: 1;
+        }
+
+        /* Add loading spinner animation */
+        .regenerate-spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 
@@ -960,6 +992,31 @@
         }
     });
     </script>
+    <!-- Add Message Edit Modal -->
+    <div id="message-edit-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-[80%] max-w-3xl" onclick="event.stopPropagation()">
+            <h3 class="text-lg font-semibold mb-4">Edit Message</h3>
+            <form id="message-edit-form" class="space-y-4">
+                <input type="hidden" id="edit-message-id">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Message Content</label>
+                    <textarea id="edit-message-content" rows="8"
+                            class="w-full p-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                            required></textarea>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="closeEditModal()"
+                            class="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                        Save
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 </body>
 
 </html>

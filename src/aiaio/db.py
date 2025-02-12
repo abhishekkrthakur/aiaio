@@ -12,6 +12,7 @@ _DB = """
 CREATE TABLE conversations (
     conversation_id TEXT PRIMARY KEY,
     created_at REAL DEFAULT (strftime('%s.%f', 'now')),
+    updated_at REAL DEFAULT (strftime('%s.%f', 'now')),
     last_updated REAL DEFAULT (strftime('%s.%f', 'now')),
     summary TEXT
 );
@@ -23,6 +24,7 @@ CREATE TABLE messages (
     content_type TEXT CHECK(content_type IN ('text', 'image', 'audio', 'video', 'file')),
     content TEXT,
     created_at REAL DEFAULT (strftime('%s.%f', 'now')),
+    updated_at REAL DEFAULT (strftime('%s.%f', 'now')),
     FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
 );
 
@@ -34,6 +36,7 @@ CREATE TABLE attachments (
     file_type TEXT,
     file_size INTEGER,
     created_at REAL DEFAULT (strftime('%s.%f', 'now')),
+    updated_at REAL DEFAULT (strftime('%s.%f', 'now')),
     FOREIGN KEY (message_id) REFERENCES messages(message_id)
 );
 
@@ -47,6 +50,7 @@ CREATE TABLE settings (
     host TEXT DEFAULT 'http://localhost:8000/v1',
     model_name TEXT DEFAULT 'meta-llama/Llama-3.2-1B-Instruct',
     api_key TEXT DEFAULT '',
+    created_at REAL DEFAULT (strftime('%s.%f', 'now')),
     updated_at REAL DEFAULT (strftime('%s.%f', 'now'))
 );
 
@@ -55,7 +59,8 @@ CREATE TABLE system_prompts (
     prompt_name TEXT NOT NULL UNIQUE,
     prompt_text TEXT NOT NULL,
     is_active BOOLEAN DEFAULT false,
-    created_at REAL DEFAULT (strftime('%s.%f', 'now'))
+    created_at REAL DEFAULT (strftime('%s.%f', 'now')),
+    updated_at REAL DEFAULT (strftime('%s.%f', 'now'))
 );
 """
 
@@ -164,6 +169,14 @@ class ChatDatabase:
                 columns = conn.execute("PRAGMA table_info(conversations)").fetchall()
                 if "summary" not in [col[1] for col in columns]:
                     conn.execute("ALTER TABLE conversations ADD COLUMN summary TEXT")
+
+                # Check if updated_at columns exist for each table
+                for table in ["conversations", "messages", "attachments", "settings", "system_prompts"]:
+                    columns = conn.execute(f"PRAGMA table_info({table})").fetchall()
+                    if "updated_at" not in [col[1] for col in columns]:
+                        conn.execute(
+                            f"ALTER TABLE {table} ADD COLUMN updated_at REAL DEFAULT (strftime('%s.%f', 'now'))"
+                        )
 
     def create_conversation(self) -> str:
         """Create a new conversation.
@@ -277,6 +290,53 @@ class ChatDatabase:
 
         return list(message_dict.values())
 
+    def get_conversation_history_upto_message_id(self, conversation_id: str, message_id: str) -> List[Dict]:
+        """Retrieve the full history of a conversation including attachments up to but not including a message_id.
+
+        Args:
+            conversation_id (str): ID of the conversation
+            message_id (str): ID of the message
+
+        Returns:
+            List[Dict]: List of messages with their attachments in chronological order
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            messages = conn.execute(
+                """SELECT m.*, a.attachment_id, a.file_name, a.file_path, a.file_type, a.file_size
+                   FROM messages m
+                   LEFT JOIN attachments a ON m.message_id = a.message_id
+                   WHERE m.conversation_id = ? AND m.created_at < (
+                       SELECT created_at FROM messages WHERE message_id = ?
+                   )
+                   ORDER BY m.created_at ASC""",
+                (conversation_id, message_id),
+            ).fetchall()
+
+        # Group attachments by message_id
+        message_dict = {}
+        for row in messages:
+            message_id = row["message_id"]
+            if message_id not in message_dict:
+                message_dict[message_id] = {
+                    key: row[key]
+                    for key in ["message_id", "conversation_id", "role", "content_type", "content", "created_at"]
+                }
+                message_dict[message_id]["attachments"] = []
+
+            if row["attachment_id"]:
+                message_dict[message_id]["attachments"].append(
+                    {
+                        "attachment_id": row["attachment_id"],
+                        "file_name": row["file_name"],
+                        "file_path": row["file_path"],
+                        "file_type": row["file_type"],
+                        "file_size": row["file_size"],
+                    }
+                )
+
+        return list(message_dict.values())
+
     def delete_conversation(self, conversation_id: str):
         """Delete a conversation and all its associated messages and attachments.
 
@@ -315,39 +375,38 @@ class ChatDatabase:
         return [dict(conv) for conv in conversations]
 
     def save_settings(self, settings: Dict) -> bool:
-        """Save or update application settings.
-
-        Args:
-            settings (Dict): Dictionary containing setting key-value pairs
-
-        Returns:
-            bool: True if settings were saved successfully
-
-        Raises:
-            sqlite3.IntegrityError: If settings name already exists
-        """
+        """Save or update application settings."""
         with sqlite3.connect(self.db_path) as conn:
             current_time = time.time()
 
-            # Check for duplicate names
-            existing = conn.execute(
-                "SELECT id FROM settings WHERE name = ? AND id != ?", (settings.get("name"), settings.get("id"))
-            ).fetchone()
+            # For existing settings, only check name uniqueness if name is changing
+            if "id" in settings and settings["id"] is not None:
+                current_name = conn.execute("SELECT name FROM settings WHERE id = ?", (settings["id"],)).fetchone()
 
-            if existing:
-                raise sqlite3.IntegrityError("Settings name must be unique")
+                # Only check for duplicate names if name is being changed
+                if current_name and current_name[0] != settings.get("name"):
+                    existing = conn.execute(
+                        "SELECT id FROM settings WHERE name = ? AND id != ?", (settings.get("name"), settings["id"])
+                    ).fetchone()
+                    if existing:
+                        raise sqlite3.IntegrityError("Settings name must be unique")
 
-            # Remove id if it's None or not present (for new settings)
-            if "id" not in settings or settings["id"] is None:
+                # Update existing setting - Fixed the parameter count here
                 cursor = conn.execute(
                     """
-                    INSERT INTO settings (
-                        name, temperature, max_tokens, top_p,
-                        host, model_name, api_key, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    UPDATE settings
+                    SET name = ?,
+                        temperature = ?,
+                        max_tokens = ?,
+                        top_p = ?,
+                        host = ?,
+                        model_name = ?,
+                        api_key = ?,
+                        updated_at = ?
+                    WHERE id = ?
                     """,
                     (
-                        settings.get("name", "New Config"),
+                        settings.get("name", "Default Config"),
                         settings.get("temperature", 1.0),
                         settings.get("max_tokens", 4096),
                         settings.get("top_p", 0.95),
@@ -355,26 +414,26 @@ class ChatDatabase:
                         settings.get("model_name", "meta-llama/Llama-3.2-1B-Instruct"),
                         settings.get("api_key", ""),
                         current_time,
+                        settings["id"],
                     ),
                 )
                 return cursor.rowcount > 0
 
-            # Update existing setting
+            # For new settings, always check name uniqueness
+            existing = conn.execute("SELECT id FROM settings WHERE name = ?", (settings.get("name"),)).fetchone()
+
+            if existing:
+                raise sqlite3.IntegrityError("Settings name must be unique")
+
             cursor = conn.execute(
                 """
-                UPDATE settings
-                SET name = ?,
-                    temperature = ?,
-                    max_tokens = ?,
-                    top_p = ?,
-                    host = ?,
-                    model_name = ?,
-                    api_key = ?,
-                    updated_at = ?
-                WHERE id = ?
+                INSERT INTO settings (
+                    name, temperature, max_tokens, top_p,
+                    host, model_name, api_key, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    settings.get("name", "Default Config"),
+                    settings.get("name", "New Config"),
                     settings.get("temperature", 1.0),
                     settings.get("max_tokens", 4096),
                     settings.get("top_p", 0.95),
@@ -382,7 +441,6 @@ class ChatDatabase:
                     settings.get("model_name", "meta-llama/Llama-3.2-1B-Instruct"),
                     settings.get("api_key", ""),
                     current_time,
-                    settings["id"],
                 ),
             )
             return cursor.rowcount > 0
@@ -486,7 +544,12 @@ class ChatDatabase:
             summary (str): New summary text for the conversation
         """
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("UPDATE conversations SET summary = ? WHERE conversation_id = ?", (summary, conversation_id))
+            conn.execute(
+                """UPDATE conversations
+                   SET summary = ?, updated_at = strftime('%s.%f', 'now')
+                   WHERE conversation_id = ?""",
+                (summary, conversation_id),
+            )
 
     def add_system_prompt(self, name: str, text: str) -> int:
         """Add a new system prompt.
@@ -516,7 +579,9 @@ class ChatDatabase:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 """UPDATE system_prompts
-                   SET prompt_name = ?, prompt_text = ?
+                   SET prompt_name = ?,
+                       prompt_text = ?,
+                       updated_at = strftime('%s.%f', 'now')
                    WHERE id = ?""",
                 (name, text, prompt_id),
             )
@@ -583,4 +648,35 @@ class ChatDatabase:
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("DELETE FROM system_prompts WHERE id = ? AND prompt_name != 'default'", (prompt_id,))
+            return cursor.rowcount > 0
+
+    def edit_message(self, message_id: str, new_content: str) -> bool:
+        """Edit an existing message's content.
+
+        Args:
+            message_id (str): ID of the message to edit
+            new_content (str): New message content
+
+        Returns:
+            bool: True if successful, False if message not found
+
+        Raises:
+            ValueError: If trying to edit a system message
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            # Check if message exists and isn't a system message
+            message = conn.execute("SELECT role FROM messages WHERE message_id = ?", (message_id,)).fetchone()
+
+            if not message:
+                return False
+
+            if message[0] == "system":
+                raise ValueError("System messages cannot be edited")
+
+            cursor = conn.execute(
+                """UPDATE messages
+                   SET content = ?, updated_at = strftime('%s.%f', 'now')
+                   WHERE message_id = ?""",
+                (new_content, message_id),
+            )
             return cursor.rowcount > 0

@@ -13,7 +13,8 @@ const state = {
     isPromptEditing: false,
     editingPromptId: null,
     originalPromptText: '',
-    isPromptEdited: false
+    isPromptEdited: false,
+    editingMessageId: null
 };
 
 // DOM Elements
@@ -132,6 +133,22 @@ function handleWebSocketMessage(data) {
             }
             break;
         
+        case 'message_edited':
+            // Find the message element by its ID
+            const messageDiv = document.querySelector(`[data-message-id="${data.message_id}"]`);
+            if (messageDiv) {
+                if (data.role === 'assistant') {
+                    // For assistant messages, use the markdown renderer
+                    updateAssistantMessage(data.content, messageDiv);
+                } else {
+                    // For user messages, just update the text content
+                    messageDiv.textContent = data.content;
+                    // Re-add edit button
+                    addEditButton(messageDiv, data.message_id, data.content);
+                }
+            }
+            break;
+            
         case 'summary_updated':
             // Find and update the specific conversation's summary
             const conversationElement = document.querySelector(`[data-conversation-id="${data.conversation_id}"]`);
@@ -142,6 +159,58 @@ function handleWebSocketMessage(data) {
                 }
             }
             break;
+    }
+}
+
+// New helper function to find message div
+function findMessageById(messageId) {
+    // For now, we'll find the message by its content position
+    // In a future update, we should add message IDs to the divs
+    return null; // TODO: Implement message finding logic
+}
+
+function addEditButton(messageDiv, messageId, content) {
+    const editButton = document.createElement('button');
+    editButton.className = 'absolute top-2 right-2 p-1 text-gray-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200';
+    editButton.innerHTML = `
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        </svg>
+    `;
+    editButton.onclick = () => openEditModal(messageDiv, messageId, content);
+    messageDiv.appendChild(editButton);
+}
+
+async function openEditModal(messageDiv, messageId, content) {
+    const modal = document.getElementById('message-edit-modal');
+    const contentInput = document.getElementById('edit-message-content');
+    const messageIdInput = document.getElementById('edit-message-id');
+    const isAssistant = messageDiv.classList.contains('assistant-message');
+    
+    // Store reference to the message being edited
+    state.editingMessageDiv = messageDiv;
+    state.editingMessageId = messageId;
+    
+    try {
+        // Fetch raw content from API
+        const response = await fetch(`/messages/${messageId}/raw`);
+        if (!response.ok) throw new Error('Failed to fetch message content');
+        const data = await response.json();
+        
+        contentInput.value = data.content;
+        messageIdInput.value = messageId;
+        
+        // Update modal title based on message type
+        const modalTitle = modal.querySelector('h3');
+        modalTitle.textContent = `Edit ${isAssistant ? 'Assistant' : 'User'} Message`;
+        
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        contentInput.focus();
+        
+    } catch (error) {
+        console.error('Error fetching message content:', error);
+        showNotification('Failed to load message content', 'error');
     }
 }
 
@@ -254,9 +323,9 @@ async function loadConversation(conversationId) {
         // Display messages
         for (const msg of data.messages) {
             if (msg.role === 'user') {
-                appendUserMessage(msg.content);
+                appendUserMessage(msg.content, msg.message_id);
             } else if (msg.role === 'assistant') {
-                state.currentAssistantMessage = createAssistantMessage();
+                state.currentAssistantMessage = createAssistantMessage(msg.message_id);
                 updateAssistantMessage(msg.content);
                 state.currentAssistantMessage = null;
             }
@@ -309,36 +378,170 @@ document.addEventListener('DOMContentLoaded', () => {
     startNewConversation(); // Ensure we start with a new conversation
 });
 
-function appendUserMessage(content) {
+function appendUserMessage(content, messageId) {
     const messageDiv = document.createElement('div');
-    messageDiv.className = 'message-bubble user-message';
+    messageDiv.className = 'message-bubble user-message relative group';
+    messageDiv.dataset.messageId = messageId; // Store message ID in the DOM
     messageDiv.textContent = content;
+    
+    // Add edit button
+    const editButton = document.createElement('button');
+    editButton.className = 'absolute top-2 right-2 p-1 text-gray-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200';
+    editButton.innerHTML = `
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        </svg>
+    `;
+    editButton.onclick = () => openEditModal(messageDiv, messageId, content);
+    messageDiv.appendChild(editButton);
+    
     elements.chatMessages.appendChild(messageDiv);
     elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
 }
 
-function createAssistantMessage() {
+// Update the createAssistantMessage function to include content parameter
+function createAssistantMessage(messageId, content = '') {
     const messageDiv = document.createElement('div');
-    messageDiv.className = 'message-bubble assistant-message';
+    messageDiv.className = 'message-bubble assistant-message relative group';
+    messageDiv.dataset.messageId = messageId; // Store message ID in the DOM
+    
+    // Add regenerate button
+    const regenerateButton = document.createElement('button');
+    regenerateButton.className = 'regenerate-button';
+    regenerateButton.innerHTML = `
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+    `;
+    regenerateButton.title = "Regenerate response";
+    regenerateButton.onclick = () => regenerateResponse(messageDiv, messageId);
+    messageDiv.appendChild(regenerateButton);
+
+    // Add edit button with the messageId and content in scope
+    const editButton = document.createElement('button');
+    editButton.className = 'absolute top-2 right-2 p-1 text-gray-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200';
+    editButton.innerHTML = `
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        </svg>
+    `;
+    editButton.onclick = () => openEditModal(messageDiv, messageId, content);
+    messageDiv.appendChild(editButton);
+    
     elements.chatMessages.appendChild(messageDiv);
     
-    // Only scroll to bottom if we haven't manually scrolled up
     if (!state.isScrolledManually) {
         scrollToBottom();
     }
     return messageDiv;
 }
 
-function updateAssistantMessage(content) {
-    if (!state.currentAssistantMessage) {
-        state.currentAssistantMessage = createAssistantMessage();
+// Add these new functions for message editing
+async function openEditModal(messageDiv, messageId, content) {
+    const modal = document.getElementById('message-edit-modal');
+    const contentInput = document.getElementById('edit-message-content');
+    const messageIdInput = document.getElementById('edit-message-id');
+    const isAssistant = messageDiv.classList.contains('assistant-message');
+    
+    if (!messageId) {
+        console.error('No message ID found');
+        return;
+    }
+    
+    // Store references for the edit operation
+    state.editingMessageDiv = messageDiv;
+    state.editingMessageId = messageId;
+    
+    try {
+        // Fetch raw content from API
+        const response = await fetch(`/messages/${messageId}/raw`);
+        if (!response.ok) throw new Error('Failed to fetch message content');
+        const data = await response.json();
+        
+        contentInput.value = data.content;
+        messageIdInput.value = messageId;
+        
+        // Update modal title based on message type
+        const modalTitle = modal.querySelector('h3');
+        modalTitle.textContent = `Edit ${isAssistant ? 'Assistant' : 'User'} Message`;
+        
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        contentInput.focus();
+        
+    } catch (error) {
+        console.error('Error fetching message content:', error);
+        showNotification('Failed to load message content', 'error');
+    }
+}
+
+function closeEditModal() {
+    const modal = document.getElementById('message-edit-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    state.editingMessageDiv = null;
+    state.editingMessageId = null;
+}
+
+// Add form submit handler for the edit modal
+document.getElementById('message-edit-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const content = document.getElementById('edit-message-content').value.trim();
+    const messageId = document.getElementById('edit-message-id').value;
+    
+    if (!content || !state.editingMessageDiv || !state.editingMessageId) return;
+    
+    try {
+        // Save to database
+        const response = await fetch(`/messages/${state.editingMessageId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to save message');
+        }
+        
+        closeEditModal();
+        showNotification('Message updated successfully', 'success');
+        
+    } catch (error) {
+        console.error('Error updating message:', error);
+        showNotification('Failed to update message', 'error');
+    }
+});
+
+// Add modal close on outside click and escape key
+document.getElementById('message-edit-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'message-edit-modal') {
+        closeEditModal();
+    }
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeEditModal();
+    }
+});
+
+// Update the updateAssistantMessage function
+function updateAssistantMessage(content, messageDiv = null) {
+    if (!messageDiv) {
+        if (!state.currentAssistantMessage) {
+            state.currentAssistantMessage = createAssistantMessage(null, '');
+        }
+        messageDiv = state.currentAssistantMessage;
     }
 
     const wasAtBottom = Math.abs(
         (elements.chatMessages.scrollHeight - elements.chatMessages.clientHeight) - elements.chatMessages.scrollTop
     ) < 10;
 
-    // Configure marked options
+    // Store the existing regenerate button before updating innerHTML
+    const existingRegenerateButton = messageDiv.querySelector('.regenerate-button');
+
+    // Configure marked options and parse content
     marked.setOptions({
         gfm: true,
         breaks: true,
@@ -354,36 +557,50 @@ function updateAssistantMessage(content) {
         }
     });
 
-    // Clean up any existing highlights before updating
-    const existingHighlights = state.currentAssistantMessage.querySelectorAll('pre code');
-    existingHighlights.forEach(block => {
-        block.parentElement.removeChild(block);
-    });
-
-    // Parse and update content
     let parsedContent = marked.parse(content);
-    
-    // Ensure code blocks are properly wrapped
     parsedContent = parsedContent.replace(
         /<pre><code class="(.*?)">/g, 
         '<pre><code class="hljs $1">'
     );
 
-    state.currentAssistantMessage.innerHTML = parsedContent;
+    messageDiv.innerHTML = parsedContent;
 
-    // Re-apply syntax highlighting to all code blocks
-    state.currentAssistantMessage.querySelectorAll('pre code').forEach(block => {
-        // Remove any previous copy buttons
+    // Get the messageId from the div's dataset
+    const messageId = messageDiv.dataset.messageId;
+
+    // Re-add regenerate button if it existed or create new one
+    const regenerateButton = existingRegenerateButton || document.createElement('button');
+    regenerateButton.className = 'regenerate-button';
+    regenerateButton.innerHTML = `
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+    `;
+    regenerateButton.title = "Regenerate response";
+    regenerateButton.onclick = () => regenerateResponse(messageDiv, messageId);
+    messageDiv.appendChild(regenerateButton);
+
+    // Add edit button
+    const editButton = document.createElement('button');
+    editButton.className = 'absolute top-2 right-2 p-1 text-gray-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200';
+    editButton.innerHTML = `
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        </svg>
+    `;
+    editButton.onclick = () => openEditModal(messageDiv, messageId, content);
+    messageDiv.appendChild(editButton);
+
+    // Re-apply syntax highlighting and copy buttons
+    messageDiv.querySelectorAll('pre code').forEach(block => {
         const pre = block.parentNode;
         const oldButton = pre.querySelector('.copy-button');
         if (oldButton) {
             pre.removeChild(oldButton);
         }
 
-        // Apply fresh syntax highlighting
         hljs.highlightElement(block);
         
-        // Add new copy button
         const copyButton = document.createElement('button');
         copyButton.className = 'copy-button';
         copyButton.textContent = 'Copy';
@@ -774,6 +991,13 @@ function updateSettingsForm(settings) {
     document.getElementById('api-host').value = settings.host || '';
     document.getElementById('model-name').value = settings.model_name || '';
     document.getElementById('api-key').value = settings.api_key || '';
+    
+    // Store timestamps if they exist
+    state.currentSettings = {
+        ...settings,
+        updated_at: settings.updated_at,
+        created_at: settings.created_at
+    };
 }
 
 // Create new settings configuration
@@ -796,7 +1020,9 @@ async function saveSettings() {
             max_tokens: parseInt(document.getElementById('max-tokens').value),
             host: document.getElementById('api-host').value.trim(),
             model_name: document.getElementById('model-name').value.trim(),
-            api_key: document.getElementById('api-key').value.trim()
+            api_key: document.getElementById('api-key').value.trim(),
+            updated_at: state.currentSettings?.updated_at,
+            created_at: state.currentSettings?.created_at
         };
         
         if (!settings.name) {
@@ -886,7 +1112,7 @@ async function saveSettings() {
         const errorNotification = document.createElement('div');
         errorNotification.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-2 animate-fade-in';
         errorNotification.innerHTML = `
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
             <span>Error saving settings: ${error.message}</span>
@@ -933,7 +1159,9 @@ function checkSettingsChanged() {
         max_tokens: parseInt(document.getElementById('max-tokens').value),
         host: document.getElementById('api-host').value.trim(),
         model_name: document.getElementById('model-name').value.trim(),
-        api_key: document.getElementById('api-key').value.trim()
+        api_key: document.getElementById('api-key').value.trim(),
+        updated_at: state.currentSettings?.updated_at,
+        created_at: state.currentSettings?.created_at
     };
     
     const hasChanged = JSON.stringify(current) !== JSON.stringify(state.originalSettings);
@@ -1408,4 +1636,77 @@ function toggleSystemPrompt() {
     
     // Save preference to localStorage
     localStorage.setItem('systemPromptCollapsed', container.style.maxHeight === '0px');
+}
+
+async function regenerateResponse(messageDiv, messageId) {
+    // Get conversation context
+    const conversationId = state.currentConversationId;
+    if (!conversationId || !messageId) return;
+
+    // Disable regenerate button and show loading state
+    const regenerateButton = messageDiv.querySelector('.regenerate-button');
+    const originalButtonHtml = regenerateButton.innerHTML;
+    regenerateButton.innerHTML = `
+        <svg class="w-4 h-4 regenerate-spinner" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+    `;
+    regenerateButton.disabled = true;
+
+    try {
+        // Create FormData for the request
+        const formData = new FormData();
+        formData.append('message', ''); // Empty message since we're regenerating
+        formData.append('system_prompt', elements.systemPrompt.value.trim() || 'You are a helpful assistant');
+        formData.append('conversation_id', conversationId);
+        formData.append('message_id', messageId);
+
+        // Make request to regenerate endpoint
+        const response = await fetch('/regenerate_response', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        // Handle streaming response
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let responseText = '';
+
+        while (true) {
+            const {value, done} = await reader.read();
+            if (done) break;
+            
+            const chunk = decoder.decode(value);
+            responseText += chunk;
+            
+            // Update the message content
+            updateAssistantMessage(responseText, messageDiv);
+        }
+
+    } catch (error) {
+        console.error('Error regenerating response:', error);
+        showNotification('Failed to regenerate response', 'error');
+    } finally {
+        // Restore regenerate button
+        regenerateButton.innerHTML = originalButtonHtml;
+        regenerateButton.disabled = false;
+    }
+}
+
+function handleVisibilityChange() {
+    if (document.hidden) {
+        // Optional: Close WebSocket when page is hidden
+        // if (state.ws) state.ws.close();
+    } else {
+        // Ensure we have a connection when page becomes visible
+        if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+            connectWebSocket();
+        }
+        // Refresh conversations list when returning to the page
+        loadConversations();
+    }
 }
