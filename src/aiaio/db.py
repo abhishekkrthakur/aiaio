@@ -303,9 +303,21 @@ class ChatDatabase:
 
         Returns:
             bool: True if settings were saved successfully
+        
+        Raises:
+            sqlite3.IntegrityError: If settings name already exists
         """
         with sqlite3.connect(self.db_path) as conn:
             current_time = time.time()
+
+            # Check for duplicate names
+            existing = conn.execute(
+                "SELECT id FROM settings WHERE name = ? AND id != ?", 
+                (settings.get("name"), settings.get("id"))
+            ).fetchone()
+            
+            if existing:
+                raise sqlite3.IntegrityError("Settings name must be unique")
 
             # Remove id if it's None or not present (for new settings)
             if "id" not in settings or settings["id"] is None:
@@ -376,8 +388,20 @@ class ChatDatabase:
 
         Returns:
             int: ID of the newly created settings
+
+        Raises:
+            sqlite3.IntegrityError: If settings name already exists
         """
         with sqlite3.connect(self.db_path) as conn:
+            # Check for duplicate names
+            existing = conn.execute(
+                "SELECT id FROM settings WHERE name = ?", 
+                (settings.get("name"),)
+            ).fetchone()
+            
+            if existing:
+                raise sqlite3.IntegrityError("Settings name must be unique")
+
             cursor = conn.execute(
                 """
                 INSERT INTO settings (

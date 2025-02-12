@@ -995,6 +995,8 @@ async function loadPrompts() {
                 option.selected = true;
                 activePrompt = prompt;
                 foundActive = true;
+                // Set the collapsed summary text
+                document.getElementById('collapsed-prompt-name').textContent = prompt.name;
             }
             
             promptSelector.appendChild(option);
@@ -1009,6 +1011,10 @@ async function loadPrompts() {
             await loadPromptContent(firstPrompt.id);
             promptSelector.value = firstPrompt.id;
         }
+
+        // Show/hide collapsed summary based on saved state
+        const isCollapsed = localStorage.getItem('systemPromptCollapsed') === 'true';
+        document.getElementById('collapsed-prompt-summary').classList.toggle('hidden', !isCollapsed);
     } catch (error) {
         console.error('Error loading prompts:', error);
     }
@@ -1028,6 +1034,11 @@ async function handlePromptChange(event) {
         
         // Then load its content
         await loadPromptContent(promptId);
+        
+        // Update collapsed summary with selected prompt name
+        const promptSelector = document.getElementById('prompt-selector');
+        const selectedOption = promptSelector.options[promptSelector.selectedIndex];
+        document.getElementById('collapsed-prompt-name').textContent = selectedOption.text;
         
     } catch (error) {
         console.error('Error changing prompt:', error);
@@ -1069,6 +1080,63 @@ function closePromptModal() {
     modal.classList.remove('flex');
     state.editingPromptId = null;
 }
+
+// Update form submit handler for the prompt modal
+document.getElementById('prompt-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const submitButton = e.target.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+    
+    const name = document.getElementById('prompt-name').value.trim();
+    const text = document.getElementById('prompt-text').value.trim();
+    
+    const promptData = {
+        name: name,
+        text: text
+    };
+    
+    try {
+        let response;
+        if (state.editingPromptId) {
+            response = await fetch(`/prompts/${state.editingPromptId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(promptData)
+            });
+        } else {
+            response = await fetch('/prompts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(promptData)
+            });
+        }
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Failed to save prompt');
+        }
+        
+        const result = await response.json();
+        
+        // Automatically activate the new/edited prompt
+        await fetch(`/prompts/${result.id}/activate`, {
+            method: 'POST'
+        });
+        
+        closePromptModal();
+        await loadPrompts(); // This will update dropdown and select the active prompt
+        
+        // Show success notification
+        showNotification('Prompt saved successfully', 'success');
+        
+    } catch (error) {
+        console.error('Error saving prompt:', error);
+        // Show error notification instead of alert
+        showNotification(error.message || 'Failed to save prompt', 'error');
+    } finally {
+        submitButton.disabled = false;
+    }
+});
 
 // Add form submit handler for the prompt modal
 document.getElementById('prompt-form').addEventListener('submit', async (e) => {
@@ -1112,7 +1180,6 @@ document.getElementById('prompt-form').addEventListener('submit', async (e) => {
         
     } catch (error) {
         console.error('Error saving prompt:', error);
-        alert('Failed to save prompt');
     }
 });
 
@@ -1179,19 +1246,50 @@ async function savePromptChanges() {
         saveButton.classList.remove('animate-pulse');
         state.isPromptEdited = false;
         
-        // Show success feedback
-        const checkIcon = document.createElement('div');
-        checkIcon.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-fade-in-out';
-        checkIcon.textContent = '✓ Prompt saved';
-        document.body.appendChild(checkIcon);
-        setTimeout(() => checkIcon.remove(), 2000);
+        showNotification('Prompt saved successfully', 'success');
         
     } catch (error) {
         console.error('Error saving prompt:', error);
-        alert('Failed to save prompt changes');
+        showNotification('Failed to save prompt: ' + error.message, 'error');
     } finally {
         saveButton.disabled = false;
     }
+}
+
+// Add this new helper function for notifications
+function showNotification(message, type = 'success') {
+    const notification = document.createElement('div');
+    notification.className = `fixed top-4 right-4 px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-2 animate-fade-in ${
+        type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+    }`;
+    
+    const icon = document.createElement('svg');
+    icon.className = 'w-4 h-4';
+    icon.setAttribute('fill', 'none');
+    icon.setAttribute('stroke', 'currentColor');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    
+    if (type === 'success') {
+        icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>';
+    } else {
+        icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>';
+    }
+    
+    notification.appendChild(icon);
+    notification.appendChild(document.createTextNode(message));
+    
+    document.body.appendChild(notification);
+    
+    // Add fade out animation
+    setTimeout(() => {
+        notification.classList.add('opacity-0', 'transform', 'translate-y-[-1rem]');
+        notification.style.transition = 'all 0.5s ease-out';
+    }, type === 'success' ? 1500 : 3000);
+    
+    // Remove the notification after animation
+    setTimeout(() => {
+        notification.remove();
+    }, type === 'success' ? 2000 : 3500);
 }
 
 async function loadPromptContent(promptId) {
@@ -1305,3 +1403,25 @@ document.addEventListener('DOMContentLoaded', () => {
 }, { once: true });
 
 // ...existing code...
+
+function toggleSystemPrompt() {
+    const container = document.getElementById('system-prompt-container');
+    const chevron = document.getElementById('system-prompt-chevron');
+    const collapsedSummary = document.getElementById('collapsed-prompt-summary');
+    
+    // Toggle the collapsed state with a smoother height transition
+    if (!container.style.maxHeight || container.style.maxHeight === '0px') {
+        container.style.maxHeight = container.scrollHeight + 'px';
+        container.classList.remove('opacity-0');
+        chevron.classList.add('rotate-180');
+        collapsedSummary.classList.add('hidden');
+    } else {
+        container.style.maxHeight = '0px';
+        container.classList.add('opacity-0');
+        chevron.classList.remove('rotate-180');
+        collapsedSummary.classList.remove('hidden');
+    }
+    
+    // Save preference to localStorage
+    localStorage.setItem('systemPromptCollapsed', container.style.maxHeight === '0px');
+}

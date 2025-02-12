@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from aiaio import __version__, logger
 from aiaio.db import ChatDatabase
 from aiaio.prompts import SUMMARY_PROMPT
-
+import sqlite3
 
 logger.info("aiaio...")
 
@@ -360,8 +360,7 @@ async def delete_conversation(conversation_id: str):
 
 @app.post("/save_settings")
 async def save_settings(settings: SettingsInput):
-    """
-    Save AI model settings.
+    """Save AI model settings.
 
     Args:
         settings (SettingsInput): Settings to save
@@ -370,12 +369,16 @@ async def save_settings(settings: SettingsInput):
         dict: Operation status
 
     Raises:
-        HTTPException: If save operation fails
+        HTTPException: If save operation fails or name already exists
     """
     try:
         settings_dict = settings.model_dump()
         db.save_settings(settings_dict)
         return {"status": "success"}
+    except sqlite3.IntegrityError as e:
+        if "unique" in str(e).lower():
+            raise HTTPException(status_code=409, detail="A settings configuration with this name already exists")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -402,19 +405,25 @@ async def get_settings():
 
 @app.post("/settings")
 async def create_settings(settings: SettingsInput):
-    """
-    Create a new settings configuration.
+    """Create a new settings configuration.
 
     Args:
         settings (SettingsInput): Settings data to create
 
     Returns:
         dict: Created settings ID and status
+        
+    Raises:
+        HTTPException: If creation fails or name already exists
     """
     try:
         settings_dict = settings.model_dump()
         settings_id = db.add_settings(settings_dict)
         return {"status": "success", "id": settings_id}
+    except sqlite3.IntegrityError as e:
+        if "unique" in str(e).lower():
+            raise HTTPException(status_code=409, detail="A settings configuration with this name already exists")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

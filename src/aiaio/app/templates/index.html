@@ -537,6 +537,22 @@
         .chat-area.sidebar-collapsed .jump-to-bottom {
             right: 40px;
         }
+
+        /* Add animation classes */
+        .animate-fade-in {
+            animation: fade-in 0.3s ease-out;
+        }
+        
+        @keyframes fade-in {
+            from {
+                opacity: 0;
+                transform: translateY(-1rem);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
     </style>
 </head>
 
@@ -614,6 +630,12 @@
             <div class="flex-grow bg-white dark:bg-gray-800 rounded-lg overflow-hidden flex flex-col min-h-0 mb-[120px] sm:mb-0">
                 <!-- System Prompt Section -->
                 <div class="flex-none border-b border-gray-200 dark:border-gray-700">
+                    <!-- Add this new element for collapsed prompt summary -->
+                    <div id="collapsed-prompt-summary" class="hidden px-4 py-2 text-xs text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                        <span class="font-medium">Current Prompt:</span>
+                        <span id="collapsed-prompt-name" class="italic"></span>
+                    </div>
+                    
                     <div class="p-3 sm:p-4">
                         <button onclick="toggleSystemPrompt()" 
                                 class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mb-3 hover:text-gray-900 dark:hover:text-gray-200 transition-colors duration-200 group">
