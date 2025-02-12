@@ -18,6 +18,9 @@ A lightweight, privacy-focused web UI for interacting with AI models. Supports b
 - 📝 Automatic conversation summarization
 - 🎯 Customizable system prompts
 - 🌐 WebSocket support for real-time updates
+- 📦 Docker support for easy deploymen
+- 📦 Multiple API endpoint support
+- 📦 Multiple system prompt support
 
 ## Requirements
 
