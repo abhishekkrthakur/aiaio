@@ -17,6 +17,8 @@
             document.documentElement.classList.remove('dark')
         }
 
+
+
         // Listen for toggle
         function toggleDarkMode() {
             const themeText = document.getElementById('theme-text');
@@ -751,9 +753,15 @@
                 </select>
             </div>
 
+            <div class="mb-2">
+                <label class="block text-xs font-medium mb-1">API Host</label>
+                <input type="text" id="api-host"
+                    class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+            </div>
+
             <!-- Configuration name -->
-            <div class="mb-4">
-                <label class="block text-xs font-medium mb-2">Configuration Name</label>
+            <div class="mb-2">
+                <label class="block text-xs font-medium mb-1">Configuration Name</label>
                 <input type="text" id="config-name" required
                     class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                     placeholder="Enter configuration name">
@@ -762,35 +770,7 @@
             <!-- Model settings -->
             <div class="flex-1 space-y-4 overflow-y-auto">
                 <div>
-                    <label class="block text-xs font-medium mb-2">Temperature</label>
-                    <input type="range" id="temperature" min="0" max="2" step="0.1" 
-                        class="w-full mb-1"
-                        oninput="document.getElementById('temperature-value').textContent = this.value">
-                    <span class="text-xs text-gray-500" id="temperature-value">1.0</span>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-medium mb-2">Top P</label>
-                    <input type="range" id="top-p" min="0" max="1" step="0.05"
-                        class="w-full mb-1"
-                        oninput="document.getElementById('top-p-value').textContent = this.value">
-                    <span class="text-xs text-gray-500" id="top-p-value">0.95</span>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-medium mb-2">Max Tokens</label>
-                    <input type="number" id="max-tokens" min="1"
-                        class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
-                </div>
-
-                <div>
-                    <label class="block text-xs font-medium mb-2">API Host</label>
-                    <input type="text" id="api-host"
-                        class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
-                </div>
-
-                <div>
-                    <label class="block text-xs font-medium mb-2">Model Name</label>
+                    <label class="block text-xs font-medium mb-1">Model Name</label>
                     <input type="text" id="model-name"
                         class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
                 </div>
@@ -798,6 +778,27 @@
                 <div>
                     <label class="block text-xs font-medium mb-2">API Key</label>
                     <input type="password" id="api-key"
+                        class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium mb-1">Temperature</label>
+                    <input type="range" id="temperature" min="0" max="2" step="0.1" 
+                        class="w-full mb-1"
+                        oninput="document.getElementById('temperature-value').textContent = this.value">
+                    <span class="text-xs text-gray-500" id="temperature-value">1.0</span>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium mb-1">Top P</label>
+                    <input type="range" id="top-p" min="0" max="1" step="0.05"
+                        class="w-full mb-1"
+                        oninput="document.getElementById('top-p-value').textContent = this.value">
+                    <span class="text-xs text-gray-500" id="top-p-value">0.95</span>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium mb-1">Max Tokens</label>
+                    <input type="number" id="max-tokens" min="1"
                         class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
                 </div>
             </div>

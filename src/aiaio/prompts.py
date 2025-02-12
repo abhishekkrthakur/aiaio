@@ -23,7 +23,12 @@ input: {'role': 'user', 'content': "['write a python snake game', 'thank you']"}
 output: python snake game
 """
 
+DEFAULT_SYSTEM_PROMPT = """
+You are a helpful bot that assists users with their queries.
+You should provide a helpful response to the user's query.
+"""
+
 SYSTEM_PROMPTS = {
     "summary": SUMMARY_PROMPT,
-    "default": "You are a helpful bot that assists users with their queries. You should provide a helpful response to the user's query.",
+    "default": DEFAULT_SYSTEM_PROMPT,
 }

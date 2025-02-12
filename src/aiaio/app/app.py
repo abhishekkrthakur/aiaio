@@ -2,6 +2,7 @@ import asyncio
 import base64
 import os
 import re
+import sqlite3
 import tempfile
 import time
 from pathlib import Path
@@ -17,7 +18,7 @@ from pydantic import BaseModel
 from aiaio import __version__, logger
 from aiaio.db import ChatDatabase
 from aiaio.prompts import SUMMARY_PROMPT
-import sqlite3
+
 
 logger.info("aiaio...")
 
@@ -412,7 +413,7 @@ async def create_settings(settings: SettingsInput):
 
     Returns:
         dict: Created settings ID and status
-        
+
     Raises:
         HTTPException: If creation fails or name already exists
     """

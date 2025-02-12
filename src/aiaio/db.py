@@ -64,7 +64,7 @@ VALUES ('default', true, 1.0, 4096, 0.95, 'http://localhost:8000/v1', 'meta-llam
 
 -- Initial system prompts
 INSERT INTO system_prompts (prompt_name, prompt_text, is_active)
-VALUES 
+VALUES
     ('summary', ?, false),
     ('default', ?, true);
 """
@@ -105,7 +105,7 @@ class ChatDatabase:
 
                 # Then insert settings
                 conn.execute(
-                    """INSERT INTO settings 
+                    """INSERT INTO settings
                        (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
@@ -303,7 +303,7 @@ class ChatDatabase:
 
         Returns:
             bool: True if settings were saved successfully
-        
+
         Raises:
             sqlite3.IntegrityError: If settings name already exists
         """
@@ -312,10 +312,9 @@ class ChatDatabase:
 
             # Check for duplicate names
             existing = conn.execute(
-                "SELECT id FROM settings WHERE name = ? AND id != ?", 
-                (settings.get("name"), settings.get("id"))
+                "SELECT id FROM settings WHERE name = ? AND id != ?", (settings.get("name"), settings.get("id"))
             ).fetchone()
-            
+
             if existing:
                 raise sqlite3.IntegrityError("Settings name must be unique")
 
@@ -324,7 +323,7 @@ class ChatDatabase:
                 cursor = conn.execute(
                     """
                     INSERT INTO settings (
-                        name, temperature, max_tokens, top_p, 
+                        name, temperature, max_tokens, top_p,
                         host, model_name, api_key, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
@@ -394,11 +393,8 @@ class ChatDatabase:
         """
         with sqlite3.connect(self.db_path) as conn:
             # Check for duplicate names
-            existing = conn.execute(
-                "SELECT id FROM settings WHERE name = ?", 
-                (settings.get("name"),)
-            ).fetchone()
-            
+            existing = conn.execute("SELECT id FROM settings WHERE name = ?", (settings.get("name"),)).fetchone()
+
             if existing:
                 raise sqlite3.IntegrityError("Settings name must be unique")
 
@@ -500,7 +496,7 @@ class ChatDatabase:
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
-                """UPDATE system_prompts 
+                """UPDATE system_prompts
                    SET prompt_name = ?, prompt_text = ?
                    WHERE id = ?""",
                 (name, text, prompt_id),
