@@ -236,7 +236,6 @@ class ChatDatabase:
                         ),
                     )
 
-
                 # Insert system prompts
                 conn.execute(
                     """INSERT INTO system_prompts (prompt_name, prompt_text, is_active)
