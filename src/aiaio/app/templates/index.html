@@ -447,8 +447,7 @@
         .settings-toggle {
             position: absolute;
             left: -12px;
-            top: auto; /* Remove top positioning */
-            bottom: 72px; /* Position from bottom */
+            top: 10px; /* Position from top instead of bottom */
             width: 40px;
             height: 40px;
             background: #f8fafc;
@@ -767,7 +766,7 @@
         <div class="h-[calc(100vh-2rem)] my-4 mx-3 px-3 py-4 overflow-y-auto bg-gray-50 dark:bg-gray-800 rounded-lg flex flex-col relative">
             <!-- Settings header -->
             <div class="flex items-center justify-between mb-4">
-                <h3 class="text-sm font-semibold">Settings</h3>
+                <h3 class="text-sm font-semibold"></h3>
                 <button onclick="createNewSettingsConfig()" 
                         class="p-1 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
                         title="Create new configuration">
@@ -854,7 +853,6 @@
                     Save Configuration
                 </button>
             </div>
-
             <!-- Settings toggle button -->
             <button class="settings-toggle" onclick="toggleSettingsSidebar()" title="Toggle Settings">
                 <i class="fas fa-chevron-left w-4 h-4 transition-transform duration-300"></i>
