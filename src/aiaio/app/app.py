@@ -770,25 +770,26 @@ async def chat(
                 }
             )
 
-            # Generate and store summary after assistant's response
-            try:
-                all_user_messages = [m["content"] for m in history if m["role"] == "user"]
-                summary_messages = [
-                    {"role": "system", "content": SUMMARY_PROMPT},
-                    {"role": "user", "content": str(all_user_messages)},
-                ]
-                summary = ""
-                logger.info(summary_messages)
-                async for chunk in text_streamer(summary_messages):
-                    summary += chunk
-                db.update_conversation_summary(conversation_id, summary.strip())
+            # Generate and store summary after assistant's response but only if its the first user message
+            if len(history) == 2 and history[1]["role"] == "user":
+                try:
+                    all_user_messages = [m["content"] for m in history if m["role"] == "user"]
+                    summary_messages = [
+                        {"role": "system", "content": SUMMARY_PROMPT},
+                        {"role": "user", "content": str(all_user_messages)},
+                    ]
+                    summary = ""
+                    logger.info(summary_messages)
+                    async for chunk in text_streamer(summary_messages):
+                        summary += chunk
+                    db.update_conversation_summary(conversation_id, summary.strip())
 
-                # After summary update
-                await manager.broadcast(
-                    {"type": "summary_updated", "conversation_id": conversation_id, "summary": summary.strip()}
-                )
-            except Exception as e:
-                logger.error(f"Failed to generate summary: {e}")
+                    # After summary update
+                    await manager.broadcast(
+                        {"type": "summary_updated", "conversation_id": conversation_id, "summary": summary.strip()}
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to generate summary: {e}")
 
         return StreamingResponse(
             process_and_stream(),

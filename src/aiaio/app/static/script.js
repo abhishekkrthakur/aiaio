@@ -272,18 +272,30 @@ async function loadConversations() {
                 <div class="group w-full px-3 py-2 text-sm rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors duration-200 cursor-pointer mb-2 relative" 
                      onclick="loadConversation('${conv.conversation_id}')"
                      data-conversation-id="${conv.conversation_id}">
-                    <div class="text-xs text-gray-600 dark:text-gray-300 italic overflow-hidden text-ellipsis">
-                        ${conv.summary || 'No summary'}
+                    <div class="flex flex-col">
+                        <div class="flex items-center justify-between mb-1">
+                            <div class="text-xs text-gray-600 dark:text-gray-300 italic overflow-hidden text-ellipsis flex-1">
+                                ${conv.summary || 'No summary'}
+                            </div>
+                            <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                <button onclick="editConversationSummary('${conv.conversation_id}', event)"
+                                        class="p-1 text-gray-500 hover:text-blue-500 hover:bg-gray-300 dark:hover:bg-gray-600 rounded">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                    </svg>
+                                </button>
+                                <button onclick="deleteConversation('${conv.conversation_id}', event)"
+                                        class="p-1 text-gray-500 hover:text-red-500 hover:bg-gray-300 dark:hover:bg-gray-600 rounded">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="text-[10px] text-gray-500 dark:text-gray-400">
+                            ${lastUpdated}
+                        </div>
                     </div>
-                    <div class="text-[10px] text-gray-500 dark:text-gray-400">
-                        ${lastUpdated}
-                    </div>
-                    <button onclick="deleteConversation('${conv.conversation_id}', event)"
-                            class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 text-gray-500 hover:text-red-500 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-200">
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
                 </div>
             `;
         }).join('');
@@ -296,6 +308,15 @@ async function loadConversations() {
     } finally {
         state.isLoading = false;
     }
+}
+
+async function editConversationSummary(conversationId, event) {
+    event.stopPropagation(); // Prevent loading the conversation
+    
+    const conversationDiv = document.querySelector(`[data-conversation-id="${conversationId}"]`);
+    const currentSummary = conversationDiv?.querySelector('.text-gray-600')?.textContent?.trim() || '';
+    
+    openSummaryModal(conversationId, currentSummary);
 }
 
 async function updateSystemPrompt() {
@@ -1710,3 +1731,68 @@ function handleVisibilityChange() {
         loadConversations();
     }
 }
+
+function openSummaryModal(conversationId, currentSummary) {
+    const modal = document.getElementById('summary-edit-modal');
+    const contentInput = document.getElementById('edit-summary-content');
+    const conversationIdInput = document.getElementById('edit-summary-conversation-id');
+    
+    contentInput.value = currentSummary === 'No summary' ? '' : currentSummary;
+    conversationIdInput.value = conversationId;
+    
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    contentInput.focus();
+}
+
+function closeSummaryModal() {
+    const modal = document.getElementById('summary-edit-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+// Add form submit handler for the summary edit modal
+document.getElementById('summary-edit-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const content = document.getElementById('edit-summary-content').value.trim();
+    const conversationId = document.getElementById('edit-summary-conversation-id').value;
+    
+    try {
+        const formData = new FormData();
+        formData.append('summary', content);
+        
+        const response = await fetch(`/conversations/${conversationId}/summary`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) throw new Error('Failed to update summary');
+        
+        // Update the UI
+        const conversationDiv = document.querySelector(`[data-conversation-id="${conversationId}"]`);
+        const summaryElement = conversationDiv.querySelector('.text-gray-600');
+        if (summaryElement) {
+            summaryElement.textContent = content || 'No summary';
+        }
+        
+        closeSummaryModal();
+        showNotification('Summary updated successfully', 'success');
+        
+    } catch (error) {
+        console.error('Error updating summary:', error);
+        showNotification('Failed to update summary', 'error');
+    }
+});
+
+// Add modal close handlers
+document.getElementById('summary-edit-modal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'summary-edit-modal') {
+        closeSummaryModal();
+    }
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeSummaryModal();
+    }
+});

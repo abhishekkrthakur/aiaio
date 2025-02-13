@@ -115,6 +115,127 @@ class ChatDatabase:
                             "",
                         ),
                     )
+                    conn.execute(
+                        """INSERT INTO settings
+                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            "HF: SambaNova",
+                            False,
+                            1.0,
+                            4096,
+                            0.95,
+                            "https://router.huggingface.co/sambanova",
+                            "meta-llama/Llama-3.2-1B-Instruct",
+                            "",
+                        ),
+                    )
+                    conn.execute(
+                        """INSERT INTO settings
+                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            "HF: Inference API",
+                            False,
+                            1.0,
+                            4096,
+                            0.95,
+                            "https://router.huggingface.co/hf-inference/v1",
+                            "meta-llama/Llama-3.2-1B-Instruct",
+                            "",
+                        ),
+                    )
+                    conn.execute(
+                        """INSERT INTO settings
+                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            "OpenAI",
+                            False,
+                            1.0,
+                            4096,
+                            0.95,
+                            "https://router.huggingface.co/hf-inference/v2",
+                            "o3-mini-2025-01-31",
+                            "",
+                        ),
+                    )
+                    conn.execute(
+                        """INSERT INTO settings
+                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            "Anthropic",
+                            False,
+                            1.0,
+                            4096,
+                            0.95,
+                            "https://api.anthropic.com/v1",
+                            "claude-3-5-sonnet-latest",
+                            "",
+                        ),
+                    )
+                    conn.execute(
+                        """INSERT INTO settings
+                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            "DeepSeek",
+                            False,
+                            1.0,
+                            4096,
+                            0.95,
+                            "https://api.deepseek.com/v1",
+                            "deepseek-chat",
+                            "",
+                        ),
+                    )
+                    conn.execute(
+                        """INSERT INTO settings
+                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            "Mistral",
+                            False,
+                            1.0,
+                            4096,
+                            0.95,
+                            "https://api.mistral.ai/v1",
+                            "mistral-large-latest",
+                            "",
+                        ),
+                    )
+                    conn.execute(
+                        """INSERT INTO settings
+                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            "Google",
+                            False,
+                            1.0,
+                            4096,
+                            0.95,
+                            "https://generativelanguage.googleapis.com/v1beta",
+                            "gemini-2.0-flash-001",
+                            "",
+                        ),
+                    )
+                    conn.execute(
+                        """INSERT INTO settings
+                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            "XAI",
+                            False,
+                            1.0,
+                            4096,
+                            0.95,
+                            "https://api.x.ai/v1",
+                            "grok-2-1212",
+                            "",
+                        ),
+                    )
+
 
                 # Insert system prompts
                 conn.execute(
