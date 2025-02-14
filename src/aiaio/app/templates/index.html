@@ -1051,6 +1051,27 @@
             </form>
         </div>
     </div>
+    <!-- Delete Confirmation Modal (universal usecase) -->
+    <div id="confirmation-modal"
+        class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-96 max-w-[90%]" onclick="event.stopPropagation()">
+            <h3 id="confirmation-title" class="text-lg font-semibold mb-4"></h3>
+            <p id="confirmation-message" class="text-sm text-gray-600 dark:text-gray-300"></p>
+
+            <input type="hidden" id="confirmation-action" value="">
+            <input type="hidden" id="confirmation-id" value="">
+
+            <div class="flex justify-end gap-2 mt-4">
+                <button id="cancel-action" type="button" onclick="closeConfirmationModal()"
+                    class="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
+                    Cancel
+                </button>
+                <button id="confirm-action" class="px-4 py-2 text-sm text-white rounded-lg">
+                    Confirm
+                </button>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>
