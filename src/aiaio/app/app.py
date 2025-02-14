@@ -5,6 +5,8 @@ import re
 import sqlite3
 import tempfile
 import time
+from contextvars import ContextVar
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -39,17 +41,28 @@ db = ChatDatabase()
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: List[WebSocket] = []
+        self.active_connections: Dict[str, WebSocket] = {}  # Use dict instead of list
+        self.active_generations: Dict[str, bool] = {}  # Track active generations
 
-    async def connect(self, websocket: WebSocket):
+    async def connect(self, websocket: WebSocket, client_id: str):
         await websocket.accept()
-        self.active_connections.append(websocket)
+        self.active_connections[client_id] = websocket
+        self.active_generations[client_id] = False
 
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+    def disconnect(self, client_id: str):
+        if client_id in self.active_connections:
+            del self.active_connections[client_id]
+        if client_id in self.active_generations:
+            del self.active_generations[client_id]
+
+    def set_generating(self, client_id: str, is_generating: bool):
+        self.active_generations[client_id] = is_generating
+
+    def should_stop(self, client_id: str) -> bool:
+        return not self.active_generations.get(client_id, False)
 
     async def broadcast(self, message: dict):
-        for connection in self.active_connections:
+        for connection in self.active_connections.values():
             try:
                 await connection.send_json(message)
             except Exception:
@@ -167,16 +180,17 @@ class MessageEdit(BaseModel):
     content: str
 
 
-async def text_streamer(messages: List[Dict[str, str]]):
-    """
-    Stream text responses from the AI model.
+@dataclass
+class RequestContext:
+    is_disconnected: bool = False
 
-    Args:
-        messages (List[Dict[str, str]]): List of message dictionaries containing role and content
 
-    Yields:
-        str: Chunks of generated text from the AI model
-    """
+# Create a context variable to track request state
+request_context: ContextVar[RequestContext] = ContextVar("request_context", default=RequestContext())
+
+
+async def text_streamer(messages: List[Dict[str, str]], client_id: str):
+    """Stream text responses from the AI model."""
     formatted_messages = []
 
     for msg in messages:
@@ -215,18 +229,34 @@ async def text_streamer(messages: List[Dict[str, str]]):
         base_url=db_settings["host"],
     )
 
-    chat_completion = client.chat.completions.create(
-        messages=formatted_messages,
-        model=db_settings["model_name"],
-        max_completion_tokens=db_settings["max_tokens"],
-        temperature=db_settings["temperature"],
-        top_p=db_settings["top_p"],
-        stream=True,
-    )
+    stream = None
+    try:
+        manager.set_generating(client_id, True)
+        stream = client.chat.completions.create(
+            messages=formatted_messages,
+            model=db_settings["model_name"],
+            max_completion_tokens=db_settings["max_tokens"],
+            temperature=db_settings["temperature"],
+            top_p=db_settings["top_p"],
+            stream=True,
+        )
 
-    for message in chat_completion:
-        if message.choices[0].delta.content is not None:
-            yield message.choices[0].delta.content
+        for message in stream:
+            if manager.should_stop(client_id):
+                logger.info(f"Stopping generation for client {client_id}")
+                break
+
+            if message.choices[0].delta.content is not None:
+                yield message.choices[0].delta.content
+
+    except Exception as e:
+        logger.error(f"Error in text_streamer: {e}")
+        raise
+
+    finally:
+        manager.set_generating(client_id, False)
+        if stream and hasattr(stream, "response"):
+            stream.response.close()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -666,7 +696,9 @@ async def chat(
     message: str = Form(...),
     system_prompt: str = Form(...),
     conversation_id: str = Form(...),  # Now required
+    client_id: str = Form(...),  # Add client_id parameter
     files: List[UploadFile] = File(None),
+    request: Request = None,
 ):
     """
     Handle chat requests with support for file uploads and streaming responses.
@@ -686,120 +718,151 @@ async def chat(
     try:
         logger.info(f"Chat request: message='{message}' conv_id={conversation_id} system_prompt='{system_prompt}'")
 
-        # Verify conversation exists
-        history = db.get_conversation_history(conversation_id)
-        if history:
-            system_role_messages = [m for m in history if m["role"] == "system"]
-            last_system_message = system_role_messages[-1]["content"] if system_role_messages else ""
-            if last_system_message != system_prompt:
+        # Create new context for this request
+        ctx = RequestContext()
+        token = request_context.set(ctx)
+
+        try:
+            # Verify conversation exists
+            history = db.get_conversation_history(conversation_id)
+            if history:
+                system_role_messages = [m for m in history if m["role"] == "system"]
+                last_system_message = system_role_messages[-1]["content"] if system_role_messages else ""
+                if last_system_message != system_prompt:
+                    db.add_message(conversation_id=conversation_id, role="system", content=system_prompt)
+
+            # Handle multiple file uploads
+            file_info_list = []
+            if files:
+                for file in files:
+                    if file is None:
+                        continue
+
+                    # Get file size by reading the file into memory
+                    contents = await file.read()
+                    file_size = len(contents)
+
+                    # Generate safe unique filename
+                    safe_filename = generate_safe_filename(file.filename)
+                    temp_file = TEMP_DIR / safe_filename
+
+                    try:
+                        # Save uploaded file
+                        with open(temp_file, "wb") as f:
+                            f.write(contents)
+                        file_info = {
+                            "name": file.filename,  # Original name for display
+                            "path": str(temp_file),  # Path to saved file
+                            "type": file.content_type,
+                            "size": file_size,
+                        }
+                        file_info_list.append(file_info)
+                        logger.info(f"Saved uploaded file: {temp_file} ({file_size} bytes)")
+                    except Exception as e:
+                        logger.error(f"Failed to save uploaded file: {e}")
+                        raise HTTPException(status_code=500, detail=f"Failed to process uploaded file: {str(e)}")
+
+            if not history:
                 db.add_message(conversation_id=conversation_id, role="system", content=system_prompt)
 
-        # Handle multiple file uploads
-        file_info_list = []
-        if files:
-            for file in files:
-                if file is None:
-                    continue
-
-                # Get file size by reading the file into memory
-                contents = await file.read()
-                file_size = len(contents)
-
-                # Generate safe unique filename
-                safe_filename = generate_safe_filename(file.filename)
-                temp_file = TEMP_DIR / safe_filename
-
-                try:
-                    # Save uploaded file
-                    with open(temp_file, "wb") as f:
-                        f.write(contents)
-                    file_info = {
-                        "name": file.filename,  # Original name for display
-                        "path": str(temp_file),  # Path to saved file
-                        "type": file.content_type,
-                        "size": file_size,
-                    }
-                    file_info_list.append(file_info)
-                    logger.info(f"Saved uploaded file: {temp_file} ({file_size} bytes)")
-                except Exception as e:
-                    logger.error(f"Failed to save uploaded file: {e}")
-                    raise HTTPException(status_code=500, detail=f"Failed to process uploaded file: {str(e)}")
-
-        if not history:
-            db.add_message(conversation_id=conversation_id, role="system", content=system_prompt)
-
-        db.add_message(
-            conversation_id=conversation_id,
-            role="user",
-            content=message,
-            attachments=file_info_list if file_info_list else None,
-        )
-
-        # get updated conversation history
-        history = db.get_conversation_history(conversation_id)
-
-        async def process_and_stream():
-            """
-            Inner generator function to process the chat and stream responses.
-
-            Yields:
-                str: Chunks of the AI response
-            """
-            full_response = ""
-            if file_info_list:
-                files_str = ", ".join(f"'{f['name']}'" for f in file_info_list)
-                acknowledgment = f"I received your message and the following files: {files_str}\n"
-                full_response += acknowledgment
-                for char in acknowledgment:
-                    yield char
-                    await asyncio.sleep(0)  # Allow other tasks to run
-
-            async for chunk in text_streamer(history):
-                full_response += chunk
-                yield chunk
-                await asyncio.sleep(0)  # Ensure chunks are flushed immediately
-
-            # Store the complete response
-            db.add_message(conversation_id=conversation_id, role="assistant", content=full_response)
-
-            # Broadcast update after storing the response
-            await manager.broadcast(
-                {
-                    "type": "message_added",
-                    "conversation_id": conversation_id,
-                }
+            db.add_message(
+                conversation_id=conversation_id,
+                role="user",
+                content=message,
+                attachments=file_info_list if file_info_list else None,
             )
 
-            # Generate and store summary after assistant's response but only if its the first user message
-            if len(history) == 2 and history[1]["role"] == "user":
+            # get updated conversation history
+            history = db.get_conversation_history(conversation_id)
+
+            async def process_and_stream():
+                """
+                Inner generator function to process the chat and stream responses.
+
+                Yields:
+                    str: Chunks of the AI response
+                """
+                full_response = ""
+                if file_info_list:
+                    files_str = ", ".join(f"'{f['name']}'" for f in file_info_list)
+                    acknowledgment = f"I received your message and the following files: {files_str}\n"
+                    full_response += acknowledgment
+                    for char in acknowledgment:
+                        yield char
+                        await asyncio.sleep(0)  # Allow other tasks to run
+
                 try:
-                    all_user_messages = [m["content"] for m in history if m["role"] == "user"]
-                    summary_messages = [
-                        {"role": "system", "content": SUMMARY_PROMPT},
-                        {"role": "user", "content": str(all_user_messages)},
-                    ]
-                    summary = ""
-                    logger.info(summary_messages)
-                    async for chunk in text_streamer(summary_messages):
-                        summary += chunk
-                    db.update_conversation_summary(conversation_id, summary.strip())
-
-                    # After summary update
-                    await manager.broadcast(
-                        {"type": "summary_updated", "conversation_id": conversation_id, "summary": summary.strip()}
-                    )
+                    async for chunk in text_streamer(history, client_id):
+                        if ctx.is_disconnected:
+                            logger.info("Client disconnected, stopping generation")
+                            # Don't save partial response on user-initiated stop
+                            return
+                        full_response += chunk
+                        yield chunk
+                        await asyncio.sleep(0)  # Ensure chunks are flushed immediately
+                except asyncio.CancelledError:
+                    # Request was cancelled, save what we have so far
+                    logger.info("Request cancelled by client, saving partial response")
+                    if full_response:
+                        db.add_message(conversation_id=conversation_id, role="assistant", content=full_response)
+                    raise
                 except Exception as e:
-                    logger.error(f"Failed to generate summary: {e}")
+                    logger.error(f"Error in process_and_stream: {e}")
+                    raise
 
-        return StreamingResponse(
-            process_and_stream(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",  # Disable Nginx buffering
-            },
-        )
+                # Only store complete response if not cancelled
+                db.add_message(conversation_id=conversation_id, role="assistant", content=full_response)
+
+                # Broadcast update after storing the response
+                await manager.broadcast(
+                    {
+                        "type": "message_added",
+                        "conversation_id": conversation_id,
+                    }
+                )
+
+                # Generate and store summary after assistant's response but only if its the first user message
+                if len(history) == 2 and history[1]["role"] == "user":
+                    try:
+                        all_user_messages = [m["content"] for m in history if m["role"] == "user"]
+                        summary_messages = [
+                            {"role": "system", "content": SUMMARY_PROMPT},
+                            {"role": "user", "content": str(all_user_messages)},
+                        ]
+                        summary = ""
+                        logger.info(summary_messages)
+                        async for chunk in text_streamer(summary_messages, client_id):
+                            summary += chunk
+                        db.update_conversation_summary(conversation_id, summary.strip())
+
+                        # After summary update
+                        await manager.broadcast(
+                            {"type": "summary_updated", "conversation_id": conversation_id, "summary": summary.strip()}
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to generate summary: {e}")
+
+            response = StreamingResponse(
+                process_and_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",  # Disable Nginx buffering
+                },
+            )
+
+            # Set up disconnection detection using response closure
+            async def on_disconnect():
+                logger.info("Client disconnected, setting disconnected flag")
+                ctx.is_disconnected = True
+
+            response.background = on_disconnect
+            return response
+
+        finally:
+            # Reset context when done
+            request_context.reset(token)
 
     except Exception as e:
         logger.error(f"Error in chat endpoint: {str(e)}")
@@ -812,6 +875,7 @@ async def chat_again(
     system_prompt: str = Form(...),
     conversation_id: str = Form(...),
     message_id: str = Form(...),
+    client_id: str = Form(...),  # Add client_id parameter
 ):
     """
     This endpoint is used to regenerate the response of a message in a conversation at any point in time.
@@ -854,7 +918,7 @@ async def chat_again(
                 str: Chunks of the AI response
             """
             full_response = ""
-            async for chunk in text_streamer(history):
+            async for chunk in text_streamer(history, client_id):
                 full_response += chunk
                 yield chunk
                 await asyncio.sleep(0)  # Ensure chunks are flushed immediately
@@ -1042,12 +1106,17 @@ async def get_active_prompt():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
+@app.websocket("/ws/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: str):
+    await manager.connect(websocket, client_id)
     try:
         while True:
-            # Wait for any message (keepalive)
-            await websocket.receive_text()
+            message = await websocket.receive_text()
+            if message == "stop_generation":
+                manager.set_generating(client_id, False)
+                logger.info(f"Received stop signal for client {client_id}")
+            else:
+                # Handle other WebSocket messages
+                pass
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        manager.disconnect(client_id)

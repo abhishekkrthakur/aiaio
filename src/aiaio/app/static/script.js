@@ -14,7 +14,9 @@ const state = {
     editingPromptId: null,
     originalPromptText: '',
     isPromptEdited: false,
-    editingMessageId: null
+    editingMessageId: null,
+    abortController: null,
+    clientId: crypto.randomUUID() // Generate unique client ID
 };
 
 // DOM Elements
@@ -26,7 +28,8 @@ const elements = {
     systemPrompt: document.getElementById('system-prompt'),
     fileInput: document.getElementById('file-input'),
     filePreviewContainer: document.getElementById('file-preview-container'),
-    sendButton: document.getElementById('send-button')
+    sendButton: document.getElementById('send-button'),
+    stopButton: document.getElementById('stop-button')
 };
 
 // Initialize app
@@ -91,9 +94,13 @@ function handleError(error, context) {
 function connectWebSocket() {
     // Use secure WebSocket if the page is served over HTTPS
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const wsUrl = `${protocol}//${window.location.host}/ws/${state.clientId}`;
     
     state.ws = new WebSocket(wsUrl);
+
+    state.ws.onopen = () => {
+        console.log('WebSocket connected');
+    };
 
     state.ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -104,13 +111,6 @@ function connectWebSocket() {
         // Reconnect after a delay
         setTimeout(connectWebSocket, 3000);
     };
-
-    // Send keepalive message every 30 seconds
-    const keepAliveInterval = setInterval(() => {
-        if (state.ws.readyState === WebSocket.OPEN) {
-            state.ws.send('keepalive');
-        }
-    }, 30000);
 
     state.ws.onerror = (error) => {
         console.error('WebSocket error:', error);
@@ -153,7 +153,7 @@ function handleWebSocketMessage(data) {
             // Find and update the specific conversation's summary
             const conversationElement = document.querySelector(`[data-conversation-id="${data.conversation_id}"]`);
             if (conversationElement) {
-                const summaryElement = conversationElement.querySelector('.text-[10px].text-gray-600');
+                const summaryElement = conversationElement.querySelector('.text-\\[10px\\].text-gray-500');
                 if (summaryElement) {
                     summaryElement.textContent = data.summary || 'No summary';
                 }
@@ -654,8 +654,13 @@ elements.chatForm.addEventListener('submit', async (e) => {
     
     if (!message && !files.length) return;
 
+    // Create new AbortController for this request
+    state.abortController = new AbortController();
+
     elements.messageInput.value = '';
     elements.sendButton.disabled = true;
+    elements.sendButton.classList.add('hidden');
+    elements.stopButton.classList.remove('hidden');
     
     try {
         if (!state.currentConversationId) {
@@ -677,6 +682,7 @@ elements.chatForm.addEventListener('submit', async (e) => {
         formData.append('message', message);
         formData.append('system_prompt', elements.systemPrompt.value.trim() || 'You are a helpful assistant');
         formData.append('conversation_id', state.currentConversationId);
+        formData.append('client_id', state.clientId); // Add client ID to request
         
         Array.from(files).forEach(file => {
             formData.append('files', file);
@@ -690,7 +696,8 @@ elements.chatForm.addEventListener('submit', async (e) => {
 
         const response = await fetch('/chat', {
             method: 'POST',
-            body: formData
+            body: formData,
+            signal: state.abortController.signal // Add abort signal to request
         });
 
         if (!response.ok) {
@@ -700,38 +707,55 @@ elements.chatForm.addEventListener('submit', async (e) => {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
 
-        let isFirstChunk = true;
-        while (true) {
-            const {value, done} = await reader.read();
-            if (done) break;
-            
-            const chunk = decoder.decode(value);
-            responseText += chunk;
+        try {
+            let isFirstChunk = true;
+            while (true) {
+                const {value, done} = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value);
+                responseText += chunk;
 
-            // Only scroll to bottom on first chunk if we're already at bottom
-            if (isFirstChunk) {
-                const isAtBottom = Math.abs(
-                    (elements.chatMessages.scrollHeight - elements.chatMessages.clientHeight) - elements.chatMessages.scrollTop
-                ) < 10;
-                state.isScrolledManually = !isAtBottom;
-                isFirstChunk = false;
+                // Only scroll to bottom on first chunk if we're already at bottom
+                if (isFirstChunk) {
+                    const isAtBottom = Math.abs(
+                        (elements.chatMessages.scrollHeight - elements.chatMessages.clientHeight) - elements.chatMessages.scrollTop
+                    ) < 10;
+                    state.isScrolledManually = !isAtBottom;
+                    isFirstChunk = false;
+                }
+                
+                updateAssistantMessage(responseText);
+                
+                if (!state.isScrolledManually) {
+                    scrollToBottom();
+                }
             }
-            
-            // Update the message with the accumulated text
-            updateAssistantMessage(responseText);
-            
-            // Only auto-scroll if user hasn't scrolled up
-            if (!state.isScrolledManually) {
-                scrollToBottom();
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('Request aborted by user');
+                // Save the partial response
+                if (responseText) {
+                    db.add_message(conversation_id=state.currentConversationId, role="assistant", content=responseText);
+                }
+            } else {
+                throw error;
             }
         }
 
     } catch (error) {
-        console.error('Error:', error);
-        state.currentAssistantMessage = null;
-        appendMessage('Sorry, something went wrong. ' + error.message, 'assistant');
+        if (error.name === 'AbortError') {
+            console.log('Request aborted');
+        } else {
+            console.error('Error:', error);
+            state.currentAssistantMessage = null;
+            appendMessage('Sorry, something went wrong. ' + error.message, 'assistant');
+        }
     } finally {
         elements.sendButton.disabled = false;
+        elements.sendButton.classList.remove('hidden');
+        elements.stopButton.classList.add('hidden');
+        state.abortController = null;
         
         // After streaming is complete, check if we should show jump-to-bottom button
         const isAtBottom = Math.abs(
@@ -740,6 +764,13 @@ elements.chatForm.addEventListener('submit', async (e) => {
         if (!isAtBottom) {
             elements.jumpToBottomButton.classList.add('visible');
         }
+    }
+});
+
+// Add stop button click handler
+elements.stopButton.addEventListener('click', () => {
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send('stop_generation');
     }
 });
 
