@@ -1,8 +1,7 @@
-import os
-import signal
-import subprocess
 import sys
 from argparse import ArgumentParser
+
+import uvicorn
 
 from aiaio import logger
 
@@ -49,44 +48,16 @@ class RunAppCommand(BaseCLICommand):
         self.workers = workers
 
     def run(self):
-        command = f"uvicorn aiaio.app.app:app --host {self.host} --port {self.port}"
-        command += f" --workers {self.workers}"
 
-        logger.info(f"Starting server with command: {command}")
-
-        if sys.platform == "win32":
-            process = subprocess.Popen(
-                command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, text=True, bufsize=1
-            )
-        else:
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                shell=True,
-                text=True,
-                bufsize=1,
-                preexec_fn=os.setsid,
-            )
+        logger.info("Starting aiaio server.")
 
         try:
-            # Stream output in real-time
-            while True:
-                output = process.stdout.readline()
-                if output:
-                    print(output.strip())
-                if process.poll() is not None:
-                    break
-
-            if process.returncode != 0:
-                logger.error(f"Process exited with code {process.returncode}")
-                sys.exit(process.returncode)
-
+            uvicorn.run(
+                "aiaio.app.app:app",
+                host=self.host,
+                port=self.port,
+                workers=self.workers
+            )
         except KeyboardInterrupt:
-            logger.warning("Attempting to terminate the process...")
-            if sys.platform == "win32":
-                process.terminate()
-            else:
-                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-            logger.info("Process terminated by user")
-            sys.exit(1)
+            logger.warning("Server terminated by user.")
+            sys.exit(0)
