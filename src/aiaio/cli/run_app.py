@@ -52,12 +52,7 @@ class RunAppCommand(BaseCLICommand):
         logger.info("Starting aiaio server.")
 
         try:
-            uvicorn.run(
-                "aiaio.app.app:app",
-                host=self.host,
-                port=self.port,
-                workers=self.workers
-            )
+            uvicorn.run("aiaio.app.app:app", host=self.host, port=self.port, workers=self.workers)
         except KeyboardInterrupt:
             logger.warning("Server terminated by user.")
             sys.exit(0)
