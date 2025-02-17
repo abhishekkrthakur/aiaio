@@ -838,29 +838,85 @@ elements.fileInput.addEventListener('change', async (e) => {
     }
 });
 
-async function deleteConversation(conversationId, event) {
-    event.stopPropagation(); // Prevent triggering the conversation load
-    if (!confirm('Are you sure you want to delete this conversation?')) return;
-    
-    try {
-        const response = await fetch(`/conversations/${conversationId}`, {
-            method: 'DELETE'
-        });
-        
-        if (response.ok) {
+// Delete conversation handler
+function deleteConversation(conversationId, event) {
+    event.stopPropagation();
+  
+    openConfirmationModal({
+      action: "delete",
+      itemId: conversationId,
+      title: "Delete Conversation?",
+      message:
+        "Are you sure you want to <strong>permanently delete</strong> this conversation? <br><br> This action <strong>cannot be undone.</strong>",
+      confirmCallback: async (conversationId) => {
+        try {
+          const response = await fetch(`/conversations/${conversationId}`, {
+            method: "DELETE",
+          });
+  
+          if (response.ok) {
             // If we're currently viewing this conversation, start a new one
             if (state.currentConversationId === conversationId) {
                 startNewConversation();
             }
-            await loadConversations(); // Refresh the list
-        } else {
-            alert('Failed to delete conversation');
+            loadConversations();
+          } else {
+            showNotification('Failed to delete conversation. Try again!', 'error');
+          }
+        } catch (error) {
+          console.error("Error deleting conversation:", error);
         }
-    } catch (error) {
-        console.error('Error deleting conversation:', error);
-        alert('Error deleting conversation');
-    }
-}
+      },
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      color: "danger",
+    });
+  }
+  
+  // Dynamic confirmation modal
+  function openConfirmationModal(modalProperties) {
+    const {
+      action = "",
+      itemId = null,
+      title = "Confirmation",
+      message = "Confirmation Message",
+      confirmCallback = () => {},
+      confirmText = "Confirm",
+      cancelText = "Cancel",
+      color = "primary",
+    } = modalProperties;
+  
+    // Set modal title and message (supports HTML)
+    document.getElementById("confirmation-title").textContent = title;
+    document.getElementById("confirmation-message").innerHTML = message;
+  
+    document.getElementById("confirmation-action").value = action;
+    document.getElementById("confirmation-id").value = itemId;
+  
+    document.getElementById("confirm-action").textContent = confirmText;
+    document.getElementById("cancel-action").textContent = cancelText;
+  
+    const confirmButton = document.getElementById("confirm-action");
+    confirmButton.className = "px-4 py-2 text-sm text-white rounded-lg";
+  
+    const themeClasses =
+      color === "danger"
+        ? "bg-red-500 hover:bg-red-600"
+        : "bg-blue-500 hover:bg-blue-600";
+  
+    confirmButton.classList.add(...themeClasses.split(" "));
+  
+    confirmButton.onclick = async () => {
+      await confirmCallback(itemId);
+      closeConfirmationModal();
+    };
+  
+    document.getElementById("confirmation-modal").classList.remove("hidden");
+  }
+  
+  function closeConfirmationModal() {
+    document.getElementById("confirmation-modal").classList.add("hidden");
+  }
 
 async function loadVersion() {
     try {
