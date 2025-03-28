@@ -21,6 +21,7 @@ from aiaio import __version__, logger
 from aiaio.db import ChatDatabase
 from aiaio.prompts import SUMMARY_PROMPT
 
+from aiaio.app.web_serching import get_text_from_first_websites
 
 logger.info("aiaio...")
 
@@ -216,6 +217,9 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
             formatted_msg["content"] = content
         else:
             # Handle text-only messages
+            relevant_info = get_text_from_first_websites(msg["content"])
+            if relevant_info is not None:
+                msg["content"] += f"\n\nRelevant web informations: {' '.join(relevant_info)}"
             formatted_msg["content"] = msg["content"]
 
         formatted_messages.append(formatted_msg)
@@ -764,7 +768,6 @@ async def chat(
 
             if not history:
                 db.add_message(conversation_id=conversation_id, role="system", content=system_prompt)
-
             db.add_message(
                 conversation_id=conversation_id,
                 role="user",
