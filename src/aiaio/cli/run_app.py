@@ -1,5 +1,6 @@
 import sys
 from argparse import ArgumentParser
+import os
 
 import uvicorn
 
@@ -9,7 +10,7 @@ from . import BaseCLICommand
 
 
 def run_app_command_factory(args):
-    return RunAppCommand(args.port, args.host, args.workers)
+    return RunAppCommand(args.port, args.host, args.workers, args.enable_search)
 
 
 class RunAppCommand(BaseCLICommand):
@@ -40,16 +41,27 @@ class RunAppCommand(BaseCLICommand):
             help="Number of workers to run the app with",
             required=False,
         )
+        run_app_parser.add_argument(
+            "--enable-search",
+            type=str,
+            default="",
+            required=False,
+            help="Enable search functionality",
+        )
         run_app_parser.set_defaults(func=run_app_command_factory)
 
-    def __init__(self, port, host, workers):
+    def __init__(self, port, host, workers,enable_serach):
         self.port = port
         self.host = host
         self.workers = workers
+        self.enable_search=enable_serach
 
     def run(self):
 
         logger.info("Starting aiaio server.")
+        if not os.environ.get("enable_web_search"):
+            print(type(self.enable_search),self.enable_search)
+            os.environ["enable_web_search"]=self.enable_search
 
         try:
             uvicorn.run("aiaio.app.app:app", host=self.host, port=self.port, workers=self.workers)

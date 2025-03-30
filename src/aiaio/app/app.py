@@ -21,7 +21,6 @@ from aiaio import __version__, logger
 from aiaio.db import ChatDatabase
 from aiaio.prompts import SUMMARY_PROMPT
 
-from aiaio.app.web_serching import get_text_from_first_websites
 
 logger.info("aiaio...")
 
@@ -38,6 +37,11 @@ TEMP_DIR.mkdir(exist_ok=True)
 
 # Initialize database
 db = ChatDatabase()
+
+
+search=os.environ["enable_web_search"]
+if search:
+    from aiaio.app.web_serching import get_text_from_first_websites
 
 
 class ConnectionManager:
@@ -217,8 +221,9 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
             formatted_msg["content"] = content
         else:
             # Handle text-only messages
-            relevant_info = get_text_from_first_websites(msg["content"])
-            if relevant_info is not None:
+            if search:
+                relevant_info = get_text_from_first_websites(msg["content"])
+            if search and relevant_info is not None :
                 msg["content"] += f"\n\nRelevant web informations: {' '.join(relevant_info)}"
             formatted_msg["content"] = msg["content"]
 
