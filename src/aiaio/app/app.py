@@ -39,13 +39,13 @@ TEMP_DIR.mkdir(exist_ok=True)
 db = ChatDatabase()
 
 
-search=os.environ["enable_web_search"]
+search = os.environ["enable_web_search"]
 if search:
     try:
         from aiaio.app.web_serching import get_text_from_first_websites
     except Exception as e:
         logger.info(f"Error {e} while importing  web searching model. Web searching is not activate. ")
-        search=False
+        search = False
 
 
 class ConnectionManager:
@@ -227,8 +227,8 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
             # Handle text-only messages
             if search:
                 relevant_info = get_text_from_first_websites(msg["content"])
-            if search and relevant_info is not None :
-                msg["content"] += f"\n\nRelevant web informations: {' '.join(relevant_info)}"
+                if relevant_info is not None:
+                    msg["content"] += f"\n\nRelevant web informations: {' '.join(relevant_info)}"
             formatted_msg["content"] = msg["content"]
 
         formatted_messages.append(formatted_msg)
