@@ -43,9 +43,7 @@ class RunAppCommand(BaseCLICommand):
         )
         run_app_parser.add_argument(
             "--enable-search",
-            type=str,
-            default="",
-            required=False,
+            action='store_true',
             help="Enable search functionality",
         )
         run_app_parser.set_defaults(func=run_app_command_factory)
@@ -60,8 +58,10 @@ class RunAppCommand(BaseCLICommand):
 
         logger.info("Starting aiaio server.")
         if not os.environ.get("enable_web_search"):
-            print(type(self.enable_search),self.enable_search)
-            os.environ["enable_web_search"]=self.enable_search
+            if self.enable_search==True:
+                os.environ["enable_web_search"]="True"
+            else:
+                os.environ["enable_web_search"] = ""
 
         try:
             uvicorn.run("aiaio.app.app:app", host=self.host, port=self.port, workers=self.workers)
