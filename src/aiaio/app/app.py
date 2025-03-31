@@ -41,7 +41,11 @@ db = ChatDatabase()
 
 search=os.environ["enable_web_search"]
 if search:
-    from aiaio.app.web_serching import get_text_from_first_websites
+    try:
+        from aiaio.app.web_serching import get_text_from_first_websites
+    except Exception as e:
+        logger.info(f"Error {e} while importing  web searching model. Web searching is not activate. ")
+        search=False
 
 
 class ConnectionManager:

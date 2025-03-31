@@ -60,8 +60,10 @@ class RunAppCommand(BaseCLICommand):
         if not os.environ.get("enable_web_search"):
             if self.enable_search==True:
                 os.environ["enable_web_search"]="True"
+                logger.info("Web searching is enable")
             else:
                 os.environ["enable_web_search"] = ""
+                logger.info("Web searching is disable")
 
         try:
             uvicorn.run("aiaio.app.app:app", host=self.host, port=self.port, workers=self.workers)
