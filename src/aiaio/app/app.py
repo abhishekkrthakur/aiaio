@@ -44,12 +44,13 @@ if search:
     try:
         from aiaio.app.web_serching import get_text_from_first_websites
     except Exception as e:
-        logger.info(f"Error {e} while importing  web searching model. Web searching is not activate. ")
+        logger.eror(f"Error {e} while importing  web searching model. Web searching is not activate. ")
         search = False
-
+actuall_seraching=False
 
 class ConnectionManager:
     def __init__(self):
+
         self.active_connections: Dict[str, WebSocket] = {}  # Use dict instead of list
         self.active_generations: Dict[str, bool] = {}  # Track active generations
 
@@ -225,7 +226,7 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
             formatted_msg["content"] = content
         else:
             # Handle text-only messages
-            if search:
+            if search and actuall_seraching:
                 relevant_info = get_text_from_first_websites(msg["content"])
                 if relevant_info is not None:
                     msg["content"] += f"\n\nRelevant web informations: {' '.join(relevant_info)}"
@@ -288,6 +289,7 @@ async def load_index(request: Request):
         {
             "request": request,
             "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "search":search
         },
     )
 
@@ -1132,3 +1134,21 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 pass
     except WebSocketDisconnect:
         manager.disconnect(client_id)
+
+@app.post("/toggle-web-search")
+async def toggle_web_search():
+    global actuall_seraching
+    if actuall_seraching:
+        actuall_seraching=False
+        return JSONResponse(content={"success": True, "status": "disabled"})
+    elif search:
+        actuall_seraching=True
+        return JSONResponse(content={"success": True, "status": "enabled"})
+    else:
+        return JSONResponse(content={"success": False, "status": "disabled"})
+
+# Endpoint to get the current status of web search
+@app.get("/web-search-status")
+async def web_search_status():
+
+    return JSONResponse(content={"status": actuall_seraching})
