@@ -235,6 +235,21 @@ class ChatDatabase:
                             "",
                         ),
                     )
+                    conn.execute(
+                        """INSERT INTO settings
+                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            "Arcee AI",
+                            False,
+                            1.0,
+                            4096,
+                            0.95,
+                            "https://models.arcee.ai/v1",
+                            "auto",
+                            "",
+                        ),
+                    )
 
                 # Insert system prompts
                 conn.execute(

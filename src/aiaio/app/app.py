@@ -246,8 +246,9 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
                 logger.info(f"Stopping generation for client {client_id}")
                 break
 
-            if message.choices[0].delta.content is not None:
-                yield message.choices[0].delta.content
+            if message.choices and len(message.choices) > 0:
+                if message.choices[0].delta.content is not None:
+                    yield message.choices[0].delta.content
 
     except Exception as e:
         logger.error(f"Error in text_streamer: {e}")
