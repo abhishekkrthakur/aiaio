@@ -740,6 +740,9 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path>
                             </svg>
                         </label>
+                        {% if search %}
+                            <button id="toggle-web-search-button" type="button" onclick="toggleWebSearch()" class="px-4 py-2 text-sm rounded-lg">Toggle Web Search</button>
+                        {% endif %}
                         <input type="text" 
                             id="message-input" 
                             class="flex-1 p-2 text-base sm:text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600" 
@@ -865,6 +868,7 @@
                 </button>
             </div>
             <!-- Settings toggle button -->
+
             <button class="settings-toggle" onclick="toggleSettingsSidebar()" title="Toggle Settings">
                 <i class="fas fa-chevron-left w-4 h-4 transition-transform duration-300"></i>
             </button>

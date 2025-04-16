@@ -21,6 +21,7 @@ A lightweight, privacy-focused web UI for interacting with AI models. Supports b
 - 📦 Docker support for easy deploymen
 - 📦 Multiple API endpoint support
 - 📦 Multiple system prompt support
+- 🌐  Simple web serching
 
 ## Requirements
 
@@ -148,6 +149,14 @@ Each conversation can have its own system prompt that guides the AI's behavior. 
 - `Ctrl/Cmd + K`: Focus chat input
 - `Ctrl/Cmd + /`: Toggle settings sidebar
 
+### Web searching
+- instal bs4 (beautifull supp), requests, duckduckgo-search 
+```bash
+pip install bs4
+pip install requests
+pip install duckduckgo-search
+```
+- to command for starting server add --enable-search
 ## Development
 
 ```bash

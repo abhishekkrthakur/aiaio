@@ -1883,3 +1883,51 @@ document.addEventListener('keydown', (e) => {
         closeSummaryModal();
     }
 });
+
+function toggleWebSearch() {
+    fetch('/toggle-web-search', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        const button = document.getElementById('toggle-web-search-button');
+        if (button) {
+            if (data.success) {
+                if (data.status === "enabled") {
+                    button.style.backgroundColor = '#3073f0';
+                    button.textContent = 'Web Search is enabled';
+                } else {
+                    button.style.backgroundColor = '#e2e8f0';
+                    button.textContent = 'Web search is disabled';
+                }
+            } else {
+                alert('Failed to toggle web search.');
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while toggling web search.');
+    });
+}
+
+// Initialize the web search button state on page load
+window.addEventListener('DOMContentLoaded', (event) => {
+    fetch('/web-search-status')
+    .then(response => response.json())
+    .then(data => {
+        const button = document.getElementById('toggle-web-search-button');
+        if (button) {
+            if (data.status === "enabled") {
+                button.style.backgroundColor = '#3073f0';
+                button.textContent = 'Web Search is enabled';
+            } else {
+                button.style.backgroundColor = '#e2e8f0';
+                button.textContent = 'Web search is disabled';
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+});
