@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 import os
 import re
 import sqlite3
@@ -18,6 +19,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 from aiaio import __version__, logger
+from aiaio.app.mcp_client import MCPClient
 from aiaio.db import ChatDatabase
 from aiaio.prompts import SUMMARY_PROMPT
 
@@ -43,17 +45,27 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}  # Use dict instead of list
         self.active_generations: Dict[str, bool] = {}  # Track active generations
+        self.tool_confirmations: Dict[str, Dict[str, asyncio.Future]] = (
+            {}
+        )  # Track tool confirmation responses by request ID
 
     async def connect(self, websocket: WebSocket, client_id: str):
         await websocket.accept()
         self.active_connections[client_id] = websocket
         self.active_generations[client_id] = False
+        self.tool_confirmations[client_id] = {}
 
     def disconnect(self, client_id: str):
         if client_id in self.active_connections:
             del self.active_connections[client_id]
         if client_id in self.active_generations:
             del self.active_generations[client_id]
+        # Cancel any pending confirmations
+        if client_id in self.tool_confirmations:
+            for request_id, future in self.tool_confirmations[client_id].items():
+                if not future.done():
+                    future.cancel()
+            del self.tool_confirmations[client_id]
 
     def set_generating(self, client_id: str, is_generating: bool):
         self.active_generations[client_id] = is_generating
@@ -68,6 +80,78 @@ class ConnectionManager:
             except Exception:
                 # If sending fails, we'll handle it in the main websocket route
                 pass
+
+    async def request_tool_confirmation(self, client_id: str, tool_name: str, tool_args: str) -> bool:
+        """
+        Request user confirmation for running a tool. Each request gets a unique ID to ensure
+        multiple calls to the same tool still require separate confirmations.
+
+        Args:
+            client_id: ID of the client
+            tool_name: Name of the tool to run
+            tool_args: Arguments to pass to the tool
+
+        Returns:
+            bool: True if user confirms, False otherwise
+        """
+        if client_id not in self.active_connections:
+            return False
+
+        # Generate a unique request ID for this specific tool call
+        request_id = f"{tool_name}_{int(time.time() * 1000)}_{hash(tool_args) % 10000}"
+
+        # Initialize tool confirmations dict for this client if needed
+        if client_id not in self.tool_confirmations:
+            self.tool_confirmations[client_id] = {}
+
+        # Create a new future for this specific request
+        future = asyncio.Future()
+        self.tool_confirmations[client_id][request_id] = future
+
+        # Send confirmation request to client with the request ID
+        try:
+            logger.info(
+                f"Sending tool confirmation request to client {client_id} for tool {tool_name} (request_id: {request_id})"
+            )
+            await self.active_connections[client_id].send_json(
+                {
+                    "type": "tool_confirmation_request",
+                    "tool_name": tool_name,
+                    "tool_args": tool_args,
+                    "request_id": request_id,
+                }
+            )
+
+            # Wait for response with timeout
+            try:
+                result = await asyncio.wait_for(future, timeout=60.0)  # 60 second timeout
+                logger.info(
+                    f"Received tool confirmation response for {tool_name} (request_id: {request_id}): {result}"
+                )
+                return result
+            except asyncio.TimeoutError:
+                logger.info(f"Tool confirmation timeout for client {client_id} (request_id: {request_id})")
+                return False
+            finally:
+                # Clean up the future to avoid memory leaks
+                if request_id in self.tool_confirmations.get(client_id, {}):
+                    del self.tool_confirmations[client_id][request_id]
+
+        except Exception as e:
+            logger.error(f"Error requesting tool confirmation: {e}")
+            return False
+
+    def set_tool_confirmation_result(self, client_id: str, request_id: str, confirmed: bool):
+        """Set the result of a specific tool confirmation request"""
+        if (
+            client_id in self.tool_confirmations
+            and request_id in self.tool_confirmations[client_id]
+            and not self.tool_confirmations[client_id][request_id].done()
+        ):
+            logger.info(f"Setting tool confirmation result for client {client_id}, request {request_id}: {confirmed}")
+            self.tool_confirmations[client_id][request_id].set_result(confirmed)
+        else:
+            logger.warning(f"Couldn't find pending confirmation for client {client_id}, request {request_id}")
 
 
 manager = ConnectionManager()
@@ -189,13 +273,14 @@ class RequestContext:
 request_context: ContextVar[RequestContext] = ContextVar("request_context", default=RequestContext())
 
 
-async def text_streamer(messages: List[Dict[str, str]], client_id: str):
+async def text_streamer(messages: List[Dict[str, str]], client_id: str, generate_summary: bool = False):
     """Stream text responses from the AI model."""
     formatted_messages = []
 
     for msg in messages:
         formatted_msg = {"role": msg["role"]}
         attachments = msg.get("attachments", [])
+        # tool_calls = msg.get("tool_calls", [])
 
         if attachments:
             # Handle messages with attachments
@@ -214,6 +299,9 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
                 content.append({"type": url_key, url_key: {"url": f"data:{att['file_type']};base64,{file_data}"}})
 
             formatted_msg["content"] = content
+        # elif tool_calls:
+        #     formatted_msg["content"] = ""
+        #     formatted_msg["tool_calls"] = tool_calls
         else:
             # Handle text-only messages
             formatted_msg["content"] = msg["content"]
@@ -230,8 +318,33 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
     )
 
     stream = None
+    mcp_client = None
     try:
         manager.set_generating(client_id, True)
+        openai_tools = []
+
+        if not generate_summary:
+            mcp_client = MCPClient()
+            try:
+                await mcp_client.connect_to_server("@openbnb/mcp-server-airbnb")
+                logger.info(f"Tools: {mcp_client.tools}")
+
+                # Convert MCP tools to OpenAI format
+                for tool in mcp_client.tools:
+                    openai_tool = {
+                        "type": "function",
+                        "function": {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": tool.inputSchema,
+                        },
+                    }
+                    openai_tools.append(openai_tool)
+            except Exception as e:
+                logger.error(f"Error connecting to MCP server: {e}")
+                # Continue without tools if connection fails
+
+        # Stream the initial response from the model
         stream = client.chat.completions.create(
             messages=formatted_messages,
             model=db_settings["model_name"],
@@ -239,7 +352,15 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
             temperature=db_settings["temperature"],
             top_p=db_settings["top_p"],
             stream=True,
+            tools=openai_tools,
+            tool_choice="auto",
         )
+
+        # Track tool call information
+        current_tool_call = None
+        tool_call_arguments = ""
+        has_tool_call = False
+        collecting_args = False
 
         for message in stream:
             if manager.should_stop(client_id):
@@ -247,8 +368,105 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
                 break
 
             if message.choices and len(message.choices) > 0:
-                if message.choices[0].delta.content is not None:
-                    yield message.choices[0].delta.content
+                delta = message.choices[0].delta
+
+                # Handle tool calls
+                if delta.tool_calls:
+                    tool_call = delta.tool_calls[0]
+
+                    # Starting a new tool call
+                    if tool_call.function and tool_call.function.name:
+                        current_tool_call = tool_call.function.name
+                        tool_call_arguments = ""
+                        has_tool_call = True
+                        collecting_args = True
+                        logger.info(f"Tool call detected: {current_tool_call}")
+                        yield f"\nCalling tool: {current_tool_call}\nArguments: "
+
+                    # Accumulating arguments for the tool call
+                    if tool_call.function and tool_call.function.arguments:
+                        tool_call_arguments += tool_call.function.arguments
+                        yield tool_call.function.arguments
+
+                # Handle regular content
+                elif delta.content is not None:
+                    yield delta.content
+
+        # Process tool call if detected
+        if has_tool_call and current_tool_call:
+            logger.info(f"Processing tool call: {current_tool_call}")
+            logger.info(f"Tool call arguments: {tool_call_arguments}")
+
+            tool_result_text = f"\nTool result: "
+
+            # Generate a unique ID for this tool call instance
+            tool_request_id = f"{current_tool_call}_{int(time.time() * 1000)}"
+
+            # Request user confirmation before running the tool
+            logger.info(f"Requesting tool confirmation for {current_tool_call} with ID {tool_request_id}")
+            confirmed = await manager.request_tool_confirmation(client_id, current_tool_call, tool_call_arguments)
+            logger.info(f"Tool confirmation response for {tool_request_id}: {confirmed}")
+
+            try:
+                if confirmed:
+                    # User confirmed, run the tool
+                    # Make sure tool_call_arguments is valid JSON before parsing
+                    args_json = {}
+                    try:
+                        if tool_call_arguments and tool_call_arguments.strip():
+                            args_json = json.loads(tool_call_arguments.strip())
+                        else:
+                            args_json = {}  # Empty object if no arguments
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Invalid JSON in tool arguments: {tool_call_arguments}")
+                        logger.error(f"JSON error: {e}")
+                        tool_result_text += f"Error: Invalid tool arguments format"
+                        yield tool_result_text
+                        return
+
+                    # Now call the tool with validated JSON
+                    tool_result = await mcp_client.call_tool(current_tool_call, args_json)
+                    logger.info(f"Tool result: {tool_result}")
+                    tool_result_text += f"{tool_result}"
+                else:
+                    # User denied, don't run the tool
+                    tool_result_text += "Tool execution denied by user"
+                    logger.info("Tool execution denied by user")
+
+                # Yield the tool result
+                # yield tool_result_text
+
+                # Add the tool result to the conversation
+                formatted_messages.append(
+                    {
+                        "role": "assistant",
+                        "content": f"Calling tool: {current_tool_call}\nArguments: {tool_call_arguments}\n{tool_result_text}",
+                    }
+                )
+
+                # Continue with a follow-up response using the tool result
+                follow_up_stream = client.chat.completions.create(
+                    messages=formatted_messages,
+                    model=db_settings["model_name"],
+                    max_completion_tokens=db_settings["max_tokens"],
+                    temperature=db_settings["temperature"],
+                    top_p=db_settings["top_p"],
+                    stream=True,
+                )
+
+                for message in follow_up_stream:
+                    if manager.should_stop(client_id):
+                        logger.info(f"Stopping follow-up generation for client {client_id}")
+                        break
+
+                    if message.choices and len(message.choices) > 0:
+                        delta = message.choices[0].delta
+                        if delta.content is not None:
+                            yield delta.content
+
+            except Exception as e:
+                logger.error(f"Error processing tool: {e}")
+                yield f"\nError processing tool: {str(e)}"
 
     except Exception as e:
         logger.error(f"Error in text_streamer: {e}")
@@ -256,6 +474,16 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
 
     finally:
         manager.set_generating(client_id, False)
+
+        # Properly close MCP client if it exists
+        if mcp_client is not None:
+            try:
+                await mcp_client.close()
+                logger.info("MCP client closed successfully")
+            except Exception as e:
+                logger.error(f"Error closing MCP client: {e}")
+
+        # Close the stream
         if stream and hasattr(stream, "response"):
             stream.response.close()
 
@@ -798,8 +1026,9 @@ async def chat(
                             logger.info("Client disconnected, stopping generation")
                             # Don't save partial response on user-initiated stop
                             return
-                        full_response += chunk
-                        yield chunk
+                        if chunk is not None:  # Add check to prevent NoneType concatenation
+                            full_response += chunk
+                            yield chunk
                         await asyncio.sleep(0)  # Ensure chunks are flushed immediately
                 except asyncio.CancelledError:
                     # Request was cancelled, save what we have so far
@@ -832,7 +1061,7 @@ async def chat(
                         ]
                         summary = ""
                         logger.info(summary_messages)
-                        async for chunk in text_streamer(summary_messages, client_id):
+                        async for chunk in text_streamer(summary_messages, client_id, generate_summary=True):
                             summary += chunk
                         db.update_conversation_summary(conversation_id, summary.strip())
 
@@ -920,8 +1149,9 @@ async def chat_again(
             """
             full_response = ""
             async for chunk in text_streamer(history, client_id):
-                full_response += chunk
-                yield chunk
+                if chunk is not None:  # Add check to prevent NoneType concatenation
+                    full_response += chunk
+                    yield chunk
                 await asyncio.sleep(0)  # Ensure chunks are flushed immediately
 
             # Store the complete response
@@ -1112,12 +1342,25 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
     await manager.connect(websocket, client_id)
     try:
         while True:
-            message = await websocket.receive_text()
-            if message == "stop_generation":
+            message = await websocket.receive_json()
+
+            if message.get("type") == "stop_generation":
                 manager.set_generating(client_id, False)
                 logger.info(f"Received stop signal for client {client_id}")
+            elif message.get("type") == "tool_confirmation_response":
+                # Handle tool confirmation response
+                confirmed = message.get("confirmed", False)
+                tool_name = message.get("tool_name", "unknown")
+                request_id = message.get("request_id", "unknown")
+                logger.info(
+                    f"Received tool confirmation response: {confirmed} for tool {tool_name}, request {request_id} from client {client_id}"
+                )
+                manager.set_tool_confirmation_result(client_id, request_id, confirmed)
             else:
                 # Handle other WebSocket messages
-                pass
+                logger.info(f"Received unknown message type: {message.get('type', 'no type')} from client {client_id}")
     except WebSocketDisconnect:
+        manager.disconnect(client_id)
+    except Exception as e:
+        logger.error(f"Error in websocket connection: {e}")
         manager.disconnect(client_id)

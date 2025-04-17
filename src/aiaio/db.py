@@ -111,7 +111,7 @@ class ChatDatabase:
                             4096,
                             0.95,
                             "http://localhost:8000/v1",
-                            "meta-llama/Llama-3.2-1B-Instruct",
+                            "Meta-Llama-3.1-8B-Instruct.Q4_K_M.gguf",
                             "",
                         ),
                     )
@@ -155,7 +155,7 @@ class ChatDatabase:
                             1.0,
                             4096,
                             0.95,
-                            "https://router.huggingface.co/hf-inference/v2",
+                            "https://api.openai.com/v1",
                             "o3-mini-2025-01-31",
                             "",
                         ),

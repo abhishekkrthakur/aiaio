@@ -1,6 +1,7 @@
 pythonenv3.10/
 pythonenv3.8/
 *.db
+test.py
 
 # data files
 *.bin

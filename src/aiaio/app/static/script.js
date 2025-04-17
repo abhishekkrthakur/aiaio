@@ -159,6 +159,11 @@ function handleWebSocketMessage(data) {
                 }
             }
             break;
+
+        case 'tool_confirmation_request':
+            // Show a confirmation dialog for tool execution with the request ID
+            showToolConfirmationDialog(data.tool_name, data.tool_args, data.request_id);
+            break;
     }
 }
 
@@ -770,7 +775,9 @@ elements.chatForm.addEventListener('submit', async (e) => {
 // Add stop button click handler
 elements.stopButton.addEventListener('click', () => {
     if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-        state.ws.send('stop_generation');
+        state.ws.send(JSON.stringify({
+            type: 'stop_generation'
+        }));
     }
 });
 
@@ -1883,3 +1890,78 @@ document.addEventListener('keydown', (e) => {
         closeSummaryModal();
     }
 });
+
+// Add new function to show tool confirmation dialog
+function showToolConfirmationDialog(toolName, toolArgs, requestId) {
+    // Remove any existing confirmation dialog to prevent multiple dialogs
+    removeToolConfirmationModal();
+    
+    // Display a user-friendly version of the arguments
+    let prettyArgs = '';
+    try {
+        const argsObj = JSON.parse(toolArgs);
+        prettyArgs = JSON.stringify(argsObj, null, 2);
+    } catch (e) {
+        prettyArgs = toolArgs;
+    }
+
+    // Create a modal for tool confirmation
+    const modalHtml = `
+        <div id="tool-confirmation-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-[80%] max-w-2xl">
+                <h3 class="text-lg font-semibold mb-2">Tool Execution Confirmation</h3>
+                <p class="mb-2">The assistant wants to run the following tool:</p>
+                <div class="mb-4">
+                    <span class="font-bold">Tool:</span> ${toolName}
+                </div>
+                <div class="mb-4">
+                    <span class="font-bold">Arguments:</span>
+                    <pre class="bg-gray-100 dark:bg-gray-700 p-2 rounded mt-1 overflow-auto max-h-[200px] text-sm">${prettyArgs}</pre>
+                </div>
+                <p class="mb-4">Do you want to allow the assistant to run this tool?</p>
+                <div class="flex justify-end gap-2">
+                    <button id="deny-tool-button" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
+                        No, Don't Run
+                    </button>
+                    <button id="allow-tool-button" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
+                        Yes, Allow
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Append modal to body
+    const modalContainer = document.createElement('div');
+    modalContainer.innerHTML = modalHtml;
+    document.body.appendChild(modalContainer);
+
+    // Add event listeners to buttons
+    document.getElementById('allow-tool-button').addEventListener('click', () => {
+        sendToolConfirmation(true, toolName, requestId);
+        removeToolConfirmationModal();
+    });
+
+    document.getElementById('deny-tool-button').addEventListener('click', () => {
+        sendToolConfirmation(false, toolName, requestId);
+        removeToolConfirmationModal();
+    });
+}
+
+function removeToolConfirmationModal() {
+    const modal = document.getElementById('tool-confirmation-modal');
+    if (modal && modal.parentNode) {
+        modal.parentNode.removeChild(modal);
+    }
+}
+
+function sendToolConfirmation(confirmed, toolName, requestId) {
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({
+            type: 'tool_confirmation_response',
+            confirmed: confirmed,
+            tool_name: toolName,
+            request_id: requestId
+        }));
+    }
+}
