@@ -1,13 +1,13 @@
 .PHONY: quality style test
 
 quality:
-	black --check --line-length 119 --target-version py310 .
-	isort --check-only .
-	flake8 --max-line-length 119
+	black --check --line-length 119 --target-version py310 --exclude .venv .
+	isort --check-only --skip .venv .
+	flake8 --max-line-length 119 --exclude .venv
 
 style:
-	black --line-length 119 --target-version py310 .
-	isort .
+	black --line-length 119 --target-version py310 --exclude .venv .
+	isort --skip .venv .
 
 test:
 	pytest -sv ./src/

@@ -425,6 +425,15 @@ class ChatDatabase:
 
         return list(message_dict.values())
 
+    def get_attachment(self, attachment_id: str) -> Optional[Dict]:
+        """Retrieve attachment details by ID."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM attachments WHERE attachment_id = ?", (attachment_id,)).fetchone()
+            if row:
+                return dict(row)
+            return None
+
     def get_conversation_history_upto_message_id(self, conversation_id: str, message_id: str) -> List[Dict]:
         """Retrieve the full history of a conversation including attachments up to but not including a message_id.
 

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from openai import OpenAI
@@ -210,8 +210,10 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
 
                 content_type_map = {"image": "image_url", "video": "video_url", "audio": "input_audio"}
 
-                url_key = content_type_map.get(file_type, "file_url")
-                content.append({"type": url_key, url_key: {"url": f"data:{att['file_type']};base64,{file_data}"}})
+                # Only add supported media types
+                if file_type in content_type_map:
+                    url_key = content_type_map[file_type]
+                    content.append({"type": url_key, url_key: {"url": f"data:{att['file_type']};base64,{file_data}"}})
 
             formatted_msg["content"] = content
         else:
@@ -763,6 +765,18 @@ async def chat(
                         logger.error(f"Failed to save uploaded file: {e}")
                         raise HTTPException(status_code=500, detail=f"Failed to process uploaded file: {str(e)}")
 
+                    # Try to read file content if it's text
+                    try:
+                        with open(temp_file, "r", encoding="utf-8") as f:
+                            text_content = f.read()
+                            # Append text content to message
+                            message += f"\n\n--- File: {file.filename} ---\n{text_content}"
+                    except UnicodeDecodeError:
+                        # Not a text file, skip appending content
+                        pass
+                    except Exception as e:
+                        logger.warning(f"Failed to read file content: {e}")
+
             if not history:
                 db.add_message(conversation_id=conversation_id, role="system", content=system_prompt)
 
@@ -784,13 +798,8 @@ async def chat(
                     str: Chunks of the AI response
                 """
                 full_response = ""
-                if file_info_list:
-                    files_str = ", ".join(f"'{f['name']}'" for f in file_info_list)
-                    acknowledgment = f"I received your message and the following files: {files_str}\n"
-                    full_response += acknowledgment
-                    for char in acknowledgment:
-                        yield char
-                        await asyncio.sleep(0)  # Allow other tasks to run
+
+                # Removed canned response generator
 
                 try:
                     async for chunk in text_streamer(history, client_id):
@@ -812,13 +821,14 @@ async def chat(
                     raise
 
                 # Only store complete response if not cancelled
-                db.add_message(conversation_id=conversation_id, role="assistant", content=full_response)
+                message_id = db.add_message(conversation_id=conversation_id, role="assistant", content=full_response)
 
                 # Broadcast update after storing the response
                 await manager.broadcast(
                     {
                         "type": "message_added",
                         "conversation_id": conversation_id,
+                        "message_id": message_id,
                     }
                 )
 
@@ -1121,3 +1131,17 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 pass
     except WebSocketDisconnect:
         manager.disconnect(client_id)
+
+
+@app.get("/attachments/{attachment_id}")
+async def get_attachment(attachment_id: str):
+    """Serve attachment files."""
+    attachment = db.get_attachment(attachment_id)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    file_path = Path(attachment["file_path"])
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(file_path, filename=attachment["file_name"], media_type=attachment["file_type"])

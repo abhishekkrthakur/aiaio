@@ -1,1077 +1,417 @@
 <!doctype html>
-<html class="dark:bg-gray-900 dark:text-gray-100">
+<html class="h-full antialiased" lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>aiaio</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
-            darkMode: 'class'
-        }
-
-        // Check initial theme
-        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark')
-        } else {
-            document.documentElement.classList.remove('dark')
-        }
-
-
-
-        // Listen for toggle
-        function toggleDarkMode() {
-            const themeText = document.getElementById('theme-text');
-            if (document.documentElement.classList.contains('dark')) {
-                document.documentElement.classList.remove('dark')
-                localStorage.theme = 'light'
-                themeText.textContent = 'Dark Mode'
-            } else {
-                document.documentElement.classList.add('dark')
-                localStorage.theme = 'dark'
-                themeText.textContent = 'Light Mode'
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                        display: ['Orbitron', 'sans-serif'],
+                    },
+                    colors: {
+                        gray: {
+                            850: '#1f2937',
+                            900: '#111827',
+                            950: '#0b0f19',
+                        },
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.3s ease-out',
+                        'slide-up': 'slideUp 0.4s ease-out',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        slideUp: {
+                            '0%': { transform: 'translateY(10px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' },
+                        }
+                    }
+                }
             }
-
-            // Toggle code highlighting theme
-            const lightTheme = document.querySelector('link[href*="github.min.css"]');
-            const darkTheme = document.querySelector('link[href*="github-dark.min.css"]');
-            
-            if (document.documentElement.classList.contains('dark')) {
-                lightTheme.disabled = true;
-                darkTheme.disabled = false;
-            } else {
-                lightTheme.disabled = false;
-                darkTheme.disabled = true;
-            }
         }
-
-        // Set initial button text
-        window.addEventListener('DOMContentLoaded', () => {
-            const themeText = document.getElementById('theme-text');
-            themeText.textContent = document.documentElement.classList.contains('dark') ? 'Light Mode' : 'Dark Mode';
-        });
     </script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" 
-          class="code-theme-dark" disabled>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Orbitron:wght@600&display=swap"
+        rel="stylesheet">
+
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Highlight.js -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
     <style>
-        /* Base styles */
-        :root {
-            --primary-color: #3b82f6;
-            --primary-hover: #2563eb;
-            --bg-light: #f8fafc;
-            --bg-dark: #1e293b;
-        }
-
-        /* Layout */
-        .chat-container {
-            display: flex;
-            height: 100vh;
-            overflow: hidden;
-        }
-
-        /* Message bubbles */
-        .message-bubble {
-            max-width: 85%;
-            margin: 4px;
-            padding: 16px;
-            border-radius: 10px;
-            line-height: 1.5;
-            position: relative;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-            word-wrap: break-word;
-            font-size: 0.9rem;
-        }
-
-        .user-message {
-            margin-left: auto;
-            background: #f0f0f0;
-            color: #1a1a1a;
-            border-bottom-right-radius: 4px;
-        }
-        .dark .user-message {
-            background: #2d3748;
-            color: #e2e8f0;
-        }
-        .assistant-message {
-            margin-right: auto;
-            background: #f0f0f0;
-            color: #1a1a1a;
-            border-bottom-left-radius: 4px;
-            line-height: 1.6;
-            position: relative;  /* Ensure position is relative for absolute button positioning */
-        }
-        .dark .assistant-message {
-            background: #2d3748;
-            color: #e2e8f0;
-        }
-        .assistant-message pre {
-            margin: 1em 0;
-            padding: 1em;
-            border-radius: 6px;
-            background: #f6f8fa;
-            overflow-x: auto;
-            border: 1px solid #e5e7eb;
-            position: relative;
-        }
-        .dark .assistant-message pre {
-            background: #1a1f2e;
-            border-color: #374151;
-            color: #e5e7eb;
-        }
-        .assistant-message code {
-            font-family: monospace;
-            padding: 2px 4px;
-            background: rgba(0,0,0,0.05);
-            border-radius: 3px;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-            font-size: 0.9em;
-            padding: 0.2em 0.4em;
-            border-radius: 3px;
-            background: rgba(0,0,0,0.05);
-            color: inherit;
-        }
-        .dark .assistant-message code {
-            background: rgba(0,0,0,0.2);
-            background: rgba(255,255,255,0.1);
-            color: inherit;
-        }
-        .assistant-message pre code {
-            padding: 0;
-            background: transparent;
-            color: inherit;
-        }
-        .message-bubble p:first-child {
-            margin-top: 0;
-        }
-        .message-bubble p:last-child {
-            margin-bottom: 0;
-        }
-        .file-preview {
-            max-width: 200px;
-            max-height: 200px;
-            object-fit: contain;
-            margin: 8px 0;
-        }
-        .file-input-button {
-            padding: 8px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .file-input-button:hover {
-            background-color: rgba(0, 0, 0, 0.05);
-        }
-        .dark .file-input-button:hover {
-            background-color: rgba(255, 255, 255, 0.05);
-        }
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none !important;
-        }
-
-        /* Mobile-friendly adjustments */
-        @media (max-width: 640px) {
-            .message-bubble {
-                max-width: 95%;
-                padding: 12px;
-                margin: 6px;
-            }
-            
-            .assistant-message pre {
-                padding: 8px;
-                font-size: 14px;
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-            }
-
-            #chat-form {
-                padding: 8px;
-            }
-
-            #message-input {
-                font-size: 16px; /* Prevent iOS zoom on input */
-            }
-
-            #system-prompt {
-                font-size: 14px;
-            }
-
-            .file-input-button {
-                padding: 6px;
-            }
-
-            #send-button {
-                padding: 8px 16px;
-            }
-        }
-
-        /* Update input and textarea styling */
-        input[type="text"], 
-        input[type="number"], 
-        input[type="password"],
-        textarea {
-            background-color: #f8fafc;
-            border: 1px solid #e2e8f0;
-            transition: all 0.2s ease;
-        }
-
-        input[type="text"]:hover, 
-        input[type="number"]:hover, 
-        input[type="password"]:hover,
-        textarea:hover {
-            background-color: #f1f5f9;
-            border-color: #cbd5e1;
-        }
-
-        input[type="text"]:focus, 
-        input[type="number"]:focus, 
-        input[type="password"]:focus,
-        textarea:focus {
-            background-color: white;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-            outline: none;
-        }
-
-        .dark input[type="text"],
-        .dark input[type="number"],
-        .dark input[type="password"],
-        .dark textarea {
-            background-color: #1e293b;
-            border-color: #334155;
-        }
-
-        .dark input[type="text"]:hover,
-        .dark input[type="number"]:hover,
-        .dark input[type="password"]:hover,
-        .dark textarea:hover {
-            background-color: #1e293b;
-            border-color: #475569;
-        }
-
-        .dark input[type="text"]:focus,
-        .dark input[type="number"]:focus,
-        .dark input[type="password"]:focus,
-        .dark textarea:focus {
-            background-color: #1e293b;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-        }
-
-        /* Update range input (slider) styling */
-        input[type="range"] {
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
             height: 6px;
-            background: #e2e8f0;
-            border-radius: 3px;
-            cursor: pointer;
         }
 
-        input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 16px;
-            height: 16px;
-            background: #3b82f6;
-            border-radius: 50%;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        input[type="range"]::-webkit-slider-thumb:hover {
-            transform: scale(1.1);
-            background: #2563eb;
-        }
-
-        .dark input[type="range"] {
-            background: #334155;
-        }
-
-        /* Add these new styles for better Markdown rendering */
-        .assistant-message h1,
-        .assistant-message h2,
-        .assistant-message h3,
-        .assistant-message h4 {
-            margin-top: 1.5em;
-            margin-bottom: 0.75em;
-            font-weight: 600;
-        }
-
-        .assistant-message h1 { font-size: 1.5em; }
-        .assistant-message h2 { font-size: 1.3em; }
-        .assistant-message h3 { font-size: 1.1em; }
-
-        .assistant-message p {
-            margin: 1em 0;
-        }
-
-        .assistant-message ul,
-        .assistant-message ol {
-            margin: 1em 0;
-            padding-left: 2em;
-        }
-
-        .assistant-message ul { list-style-type: disc; }
-        .assistant-message ol { list-style-type: decimal; }
-
-        .assistant-message table {
-            margin: 1em 0;
-            border-collapse: collapse;
-            width: 100%;
-        }
-
-        .assistant-message th,
-        .assistant-message td {
-            padding: 0.5em;
-            border: 1px solid #e5e7eb;
-        }
-
-        .dark .assistant-message th,
-        .dark .assistant-message td {
-            border-color: #374151;
-        }
-
-        .assistant-message th {
-            background: #f9fafb;
-            font-weight: 600;
-        }
-
-        .dark .assistant-message th {
-            background: #374151;
-        }
-
-        .assistant-message blockquote {
-            margin: 1em 0;
-            padding-left: 1em;
-            border-left: 4px solid #e5e7eb;
-            color: #6b7280;
-        }
-
-        .dark .assistant-message blockquote {
-            border-left-color: #4b5563;
-            color: #9ca3af;
-        }
-
-        /* Override highlight.js theme colors for dark mode */
-        .dark .hljs {
+        ::-webkit-scrollbar-track {
             background: transparent;
-            color: #e5e7eb;
-        }
-        
-        .dark .hljs-keyword,
-        .dark .hljs-operator {
-            color: #c678dd;  /* Purple */
-        }
-        
-        .dark .hljs-string {
-            color: #98c379;  /* Green */
-        }
-        
-        .dark .hljs-comment {
-            color: #7f8c98;  /* Muted gray */
-        }
-        
-        .dark .hljs-function,
-        .dark .hljs-class {
-            color: #61afef;  /* Blue */
-        }
-        
-        .dark .hljs-number {
-            color: #d19a66;  /* Orange */
-        }
-        
-        .dark .hljs-title {
-            color: #e5c07b;  /* Yellow */
         }
 
-        /* Override highlight.js default borders */
-        .hljs {
-            background: transparent !important;
-            border: none !important;
-            padding: 0 !important;
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
         }
 
-        /* Add these new styles for the copy button */
-        .copy-button {
-            position: absolute;
-            top: 0.5rem;
-            right: 0.5rem;
-            padding: 0.25rem 0.5rem;
-            background-color: #f3f4f6;
-            border: 1px solid #e5e7eb;
-            border-radius: 0.375rem;
-            font-size: 0.75rem;
-            cursor: pointer;
-            opacity: 0;
-            transition: opacity 0.2s;
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
         }
 
-        .dark .copy-button {
-            background-color: #374151;
-            border-color: #4b5563;
-            color: #e5e7eb;
+        /* Glassmorphism utilities */
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
         }
 
-        pre:hover .copy-button {
-            opacity: 1;
+        .dark .glass {
+            background: rgba(17, 24, 39, 0.7);
         }
 
-        .copy-button:hover {
-            background-color: #e5e7eb;
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .dark .copy-button:hover {
-            background-color: #4b5563;
+        /* Markdown Styles */
+        .prose pre {
+            margin: 0;
+            border-radius: 0.5rem;
         }
 
-        /* Update pre style to support copy button */
-        .assistant-message pre {
-            position: relative;
-        }
-
-        /* Add these new styles for the collapsible sidebar */
-        .settings-sidebar {
-            transition: transform 0.3s ease-in-out;
-        }
-
-        .settings-sidebar.collapsed {
-            transform: translateX(calc(100% - 24px));
-        }
-
-        .settings-toggle {
-            position: absolute;
-            left: -12px;
-            top: 10px; /* Position from top instead of bottom */
-            width: 40px;
-            height: 40px;
-            background: #f8fafc;
-            border: 0px solid #e2e8f0;
-            border-radius: 10px 0 0 10px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background-color 0.2s;
-        }
-
-        .dark .settings-toggle {
-            background: #1e293b;
-            border-color: #334155;
-        }
-
-        .settings-toggle:hover {
-            background: #f1f5f9;
-        }
-
-        .dark .settings-toggle:hover {
-            background: #2d3748;
-        }
-
-        .settings-toggle svg {
-            width: 3px; /* Make arrow icon smaller */
-            height: 12px; /* Make arrow icon smaller */
-            transition: transform 0.3s;
-        }
-
-        .settings-sidebar.collapsed .settings-toggle svg {
-            transform: rotate(180deg);
-        }
-
-        /* Update main chat area transition */
-        .chat-area {
-            transition: margin-right 0.3s ease-in-out;
-        }
-
-        .chat-area.sidebar-collapsed {
-            margin-right: 24px !important;
-        }
-
-        /* Add these new styles for scroll behavior */
-        #chat-messages {
-            scroll-behavior: smooth;
-        }
-
-        /* Jump to bottom button */
-        .jump-to-bottom {
-            position: fixed;
-            bottom: 140px; /* Position above the chat input */
-            right: 280px; /* Position considering the right sidebar */
-            background: rgba(59, 130, 246, 0.9);
-            color: white;
-            padding: 0.5rem;
-            border-radius: 9999px;
-            cursor: pointer;
-            opacity: 0;
-            transform: translateY(20px);
-            transition: opacity 0.2s, transform 0.2s;
-            z-index: 50;
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        .jump-to-bottom.visible {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        .dark .jump-to-bottom {
-            background: rgba(59, 130, 246, 0.8);
-        }
-
-        @media (max-width: 640px) {
-            .jump-to-bottom {
-                right: 20px;
-                bottom: 160px;
-            }
-        }
-
-        /* When settings sidebar is collapsed */
-        .chat-area.sidebar-collapsed .jump-to-bottom {
-            right: 40px;
-        }
-
-        /* Add animation classes */
-        .animate-fade-in {
-            animation: fade-in 0.3s ease-out;
-        }
-        
-        @keyframes fade-in {
-            from {
-                opacity: 0;
-                transform: translateY(-1rem);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        /* Add styles for regenerate button */
-        .regenerate-button {
-            position: absolute;
-            top: 2px;
-            right: 32px; /* Position to the left of edit button */
-            padding: 4px;
-            opacity: 0;
-            transition: opacity 0.2s;
-            color: #6b7280;
-            border-radius: 4px;
-        }
-
-        .regenerate-button:hover {
-            color: #3b82f6;
-            background-color: rgba(59, 130, 246, 0.1);
-        }
-
-        .group:hover .regenerate-button {
-            opacity: 1;
-        }
-
-        /* Add loading spinner animation */
-        .regenerate-spinner {
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+        /* Message Bubbles */
+        .message-bubble {
+            animation: fadeIn 0.3s ease-out;
         }
     </style>
 </head>
 
-<body class="bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
-    <!-- Left sidebar toggle button -->
-    <button data-drawer-target="left-sidebar" data-drawer-toggle="left-sidebar"
-        aria-controls="left-sidebar" type="button"
-        class="inline-flex items-center p-2 mt-2 ms-3 text-sm text-gray-500 rounded-lg sm:hidden hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200">
-        <span class="sr-only">Open sidebar</span>
-        <svg class="w-6 h-6" aria-hidden="true" fill="currentColor" viewBox="0 0 20 20">
-            <path clip-rule="evenodd" fill-rule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 10.5a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5a.75.75 0 01-.75-.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10z"></path>
-        </svg>
-    </button>
+<body
+    class="h-full bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 overflow-hidden transition-colors duration-300">
 
-    <!-- Left Sidebar -->
-    <aside id="left-sidebar" class="fixed top-0 left-0 z-40 w-64 h-screen transition-transform -translate-x-full sm:translate-x-0">
-        <div class="h-[calc(100vh-2rem)] my-4 mx-3 px-3 py-4 bg-gray-50 dark:bg-gray-800 rounded-lg flex flex-col">
-            <!-- App title -->
-            <a href="#" class="flex items-center ps-2.5 mb-4">
-                <span class="font-['Orbitron'] text-2xl font-semibold bg-gradient-to-r from-blue-500 to-purple-600 text-transparent bg-clip-text">aiaio</span>
-            </a>
-            <!-- Add this line for version display -->
-            <div id="version-display" class="text-xs text-gray-500 dark:text-gray-400 ps-2.5 mb-4"></div>
-            <hr class="mb-4 border-gray-200 dark:border-gray-700">
-            
-            <!-- New Chat Button - Moved here -->
-            <button onclick="startNewConversation()" 
-                    class="mb-4 w-full px-3 py-2 text-sm 
-                           bg-white dark:bg-gray-700 rounded-lg 
-                           hover:bg-gray-50 dark:hover:bg-gray-600 
-                           border border-gray-200 dark:border-gray-600
-                           transition-colors duration-200 flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                </svg>
-                New Chat
-            </button>
-            
-            <!-- Scrollable conversations container -->
-            <div class="flex-1 overflow-y-auto mb-4">
-                <div class="mb-4">
-                    <div class="flex items-center justify-between px-2 mb-2">
-                        <h3 class="text-sm font-semibold text-gray-600 dark:text-gray-400">Conversations</h3>
+    <div class="flex h-full">
+        <!-- Sidebar (Left) -->
+        <aside id="sidebar"
+            class="w-80 flex-shrink-0 flex flex-col border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 transition-all duration-300 transform -translate-x-full sm:translate-x-0 absolute sm:relative z-30 h-full">
+            <!-- Header -->
+            <div class="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div
+                        class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                        <i class="fa-solid fa-robot text-white text-sm"></i>
                     </div>
-                    <div id="conversations-list" class="space-y-1 pr-2">
-                        <!-- Conversations will be listed here -->
-                    </div>
+                    <span
+                        class="font-display text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400">
+                        aiaio
+                    </span>
                 </div>
-            </div>
-
-            <!-- Fixed dark mode toggle at bottom -->
-            <div class="pt-2">
-                <button id="theme-toggle" 
-                    onclick="toggleDarkMode()"
-                    class="w-full px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-600 
-                    hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 
-                    focus:ring-gray-200 dark:focus:ring-gray-700 transition-colors duration-200
-                    flex items-center justify-between">
-                    <span id="theme-text" class="text-sm font-medium text-gray-700 dark:text-gray-300">Dark Mode</span>
-                    <svg id="theme-toggle-icon" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                        <!-- Moon icon -->
-                        <path class="hidden dark:block" d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
-                        <!-- Sun icon -->
-                        <path class="block dark:hidden" fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"></path>
-                    </svg>
+                <button id="close-sidebar-mobile"
+                    class="sm:hidden text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    onclick="closeSidebar()">
+                    <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
-        </div>
-    </aside>
 
-    <!-- Main Chat Area - Update padding and margins for mobile -->
-    <div class="chat-area sm:ml-64 sm:mr-64 px-2 sm:px-0">
-        <div class="h-[calc(100vh-1rem)] sm:h-[calc(100vh-2rem)] my-2 sm:my-4 flex flex-col relative">
-            <!-- Combined Container for System Prompt and Chat Messages -->
-            <div class="flex-grow bg-white dark:bg-gray-800 rounded-lg overflow-hidden flex flex-col min-h-0 mb-[120px] sm:mb-0">
-                <!-- System Prompt Section -->
-                <div class="flex-none border-b border-gray-200 dark:border-gray-700">
-                    <!-- Add this new element for collapsed prompt summary -->
-                    <div id="collapsed-prompt-summary" class="hidden px-4 py-2 text-xs text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                        <span class="font-medium">Current Prompt:</span>
-                        <span id="collapsed-prompt-name" class="italic"></span>
-                    </div>
-                    
-                    <div class="p-3 sm:p-4">
-                        <button onclick="toggleSystemPrompt()" 
-                                class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mb-3 hover:text-gray-900 dark:hover:text-gray-200 transition-colors duration-200 group">
-                            <svg id="system-prompt-chevron" class="w-4 h-4 transform transition-transform duration-200 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                            </svg>
-                            <span class="font-medium">System Prompt</span>
-                        </button>
-                        <div id="system-prompt-container" class="transition-all duration-300 overflow-hidden space-y-3">
-                            <!-- Prompt selector group -->
-                            <div class="flex items-center gap-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
-                                <select id="prompt-selector" 
-                                        class="flex-1 p-2 text-sm border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 hover:border-blue-500 dark:hover:border-blue-500 transition-colors duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/20">
-                                </select>
-                                <button onclick="openPromptModal()" 
-                                        class="p-2 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-white dark:hover:bg-gray-600 transition-all duration-200"
-                                        title="Create new prompt">
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                                    </svg>
+            <!-- New Chat Button -->
+            <div class="p-4">
+                <button onclick="startNewConversation()"
+                    class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-600/20 transition-all duration-200 flex items-center justify-center gap-2 font-medium group">
+                    <i class="fa-solid fa-plus transition-transform group-hover:rotate-90"></i>
+                    <span>New Chat</span>
+                </button>
+            </div>
+
+            <!-- Conversations List -->
+            <div class="flex-1 overflow-y-auto px-3 py-2 space-y-1" id="conversations-list">
+                <!-- Conversations will be injected here -->
+            </div>
+
+            <!-- User/Settings Footer -->
+            <div class="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
+                <div class="flex items-center justify-between">
+                    <button onclick="toggleDarkMode()"
+                        class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors"
+                        id="theme-toggle">
+                        <i class="fa-solid fa-moon dark:hidden"></i>
+                        <i class="fa-solid fa-sun hidden dark:block"></i>
+                    </button>
+                    <button onclick="toggleSettings()"
+                        class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors">
+                        <i class="fa-solid fa-gear"></i>
+                    </button>
+                </div>
+                <div id="version-display" class="text-xs text-center text-gray-400 mt-2 font-mono"></div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col h-full relative min-w-0">
+            <!-- Mobile Header -->
+            <div
+                class="sm:hidden h-14 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-4 bg-white dark:bg-gray-900 z-20">
+                <button id="open-sidebar-mobile" class="text-gray-600 dark:text-gray-400" onclick="openSidebar()">
+                    <i class="fa-solid fa-bars text-xl"></i>
+                </button>
+                <span class="font-display font-bold text-lg">aiaio</span>
+                <div class="w-6"></div> <!-- Spacer -->
+            </div>
+
+            <!-- Top Bar (System Prompt Toggle) -->
+            <div class="absolute top-0 left-0 right-0 z-10 p-4 pointer-events-none">
+                <div class="max-w-3xl mx-auto pointer-events-auto">
+                    <div class="glass rounded-2xl border border-gray-200/50 dark:border-gray-700/50 shadow-sm overflow-hidden transition-all duration-300"
+                        id="system-prompt-panel">
+                        <div class="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-800/50"
+                            onclick="toggleSystemPrompt()">
+                            <div class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+                                <i class="fa-solid fa-robot text-blue-500"></i>
+                                <span>System Prompt</span>
+                            </div>
+                            <i class="fa-solid fa-chevron-down text-xs text-gray-400 transition-transform duration-300"
+                                id="system-prompt-chevron"></i>
+                        </div>
+                        <div class="hidden border-t border-gray-200/50 dark:border-gray-700/50 p-4 bg-gray-50/50 dark:bg-gray-900/50"
+                            id="system-prompt-content">
+                            <div class="flex gap-2 mb-3">
+                                <select id="prompt-selector"
+                                    class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                                <button onclick="openPromptModal()"
+                                    class="p-2 text-gray-500 hover:text-blue-600 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                    <i class="fa-solid fa-plus"></i>
                                 </button>
                             </div>
-
-                            <!-- Prompt text area group -->
-                            <div class="relative group">
-                                <textarea id="system-prompt" 
-                                    class="w-full p-3 text-sm border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100
-                                           hover:border-blue-500 dark:hover:border-blue-500 transition-colors duration-200
-                                           focus:outline-none focus:ring-2 focus:ring-blue-500/20" 
-                                    rows="3"
-                                    placeholder="Enter system prompt..."></textarea>
+                            <textarea id="system-prompt" rows="3"
+                                class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                                placeholder="Enter system instructions..."></textarea>
+                            <div class="flex justify-end mt-2">
                                 <button id="save-prompt-button"
-                                        class="absolute right-2 top-2 p-1.5 text-gray-400 hover:text-blue-600 
-                                               bg-white dark:bg-gray-700 rounded-lg hover:bg-gray-50 
-                                               dark:hover:bg-gray-600 opacity-0 group-hover:opacity-100 
-                                               transition-all duration-200 hidden"
-                                        title="Save changes">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                                    </svg>
-                                </button>
+                                    class="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">Save</button>
                             </div>
                         </div>
                     </div>
                 </div>
-                <!-- Chat Messages Section -->
-                <div id="chat-messages" class="flex-grow overflow-y-auto p-2 sm:p-4">
-                    <!-- Chat messages will be inserted here -->
-                </div>
-                <!-- Add jump-to-bottom button here, after chat-messages -->
-                <button id="jump-to-bottom" class="jump-to-bottom" onclick="scrollToBottom()">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
-                    </svg>
-                </button>
-            </div>
-            <!-- Chat Input Area - Fixed on mobile -->
-            <div class="flex-none bg-white dark:bg-gray-800 rounded-lg p-2 sm:p-4 mt-2 sm:mt-4 fixed sm:relative bottom-0 left-0 right-0 sm:left-auto sm:right-auto mx-2 sm:mx-0">
-                <form id="chat-form" class="space-y-2">
-                    <div id="file-preview-container" class="hidden space-y-2"></div>
-                    <div class="flex gap-1 sm:gap-2">
-                        <label class="file-input-button">
-                            <input type="file" 
-                                id="file-input" 
-                                class="hidden" 
-                                accept=".txt,.csv,.json,.pdf,.doc,.docx,.xls,.xlsx,image/*"
-                                multiple>
-                            <svg class="w-6 h-6 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path>
-                            </svg>
-                        </label>
-                        <input type="text" 
-                            id="message-input" 
-                            class="flex-1 p-2 text-base sm:text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600" 
-                            placeholder="Send a message...">
-                        <button type="submit" 
-                            id="send-button"
-                            class="px-4 sm:px-6 py-2 bg-gradient-to-r from-blue-500 to-blue-600 
-                                text-white rounded-lg hover:from-blue-600 hover:to-blue-700 
-                                transition-all duration-200 transform hover:scale-105 
-                                flex items-center gap-2 shadow-lg hover:shadow-blue-500/50 
-                                disabled:hover:scale-100 text-sm sm:text-base">
-                            <svg class="w-4 h-4 transform rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
-                            </svg>
-                        </button>
-                        <button type="button" 
-                            id="stop-button"
-                            class="hidden px-4 sm:px-6 py-2 bg-gradient-to-r from-red-500 to-red-600 
-                                text-white rounded-lg hover:from-red-600 hover:to-red-700 
-                                transition-all duration-200 transform hover:scale-105 
-                                flex items-center gap-2 shadow-lg hover:shadow-red-500/50"
-                                title="Stop generating">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                            </svg>
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Right Sidebar -->
-    <aside class="settings-sidebar fixed top-0 right-0 z-40 w-64 hidden sm:block">
-        <div class="h-[calc(100vh-2rem)] my-4 mx-3 px-3 py-4 overflow-y-auto bg-gray-50 dark:bg-gray-800 rounded-lg flex flex-col relative">
-            <!-- Settings header -->
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="text-sm font-semibold"></h3>
-                <button onclick="createNewSettingsConfig()" 
-                        class="p-1 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                        title="Create new configuration">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                    </svg>
-                </button>
             </div>
 
-            <!-- Configuration selector -->
-            <div class="mb-4">
-                <label class="block text-xs font-medium mb-2">Active Configuration</label>
-                <select id="settings-selector" 
-                        class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
-                </select>
-            </div>
-
-            <div class="mb-2">
-                <label class="block text-xs font-medium mb-1">API Host</label>
-                <input type="text" id="api-host"
-                    class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
-            </div>
-
-            <!-- Configuration name -->
-            <div class="mb-2">
-                <label class="block text-xs font-medium mb-1">Configuration Name</label>
-                <input type="text" id="config-name" required
-                    class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                    placeholder="Enter configuration name">
-            </div>
-
-            <!-- Model settings -->
-            <div class="flex-1 space-y-4 overflow-y-auto">
-                <div>
-                    <label class="block text-xs font-medium mb-1">Model Name</label>
-                    <input type="text" id="model-name"
-                        class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
-                </div>
-
-                <div>
-                    <label class="block text-xs font-medium mb-2">API Key</label>
-                    <input type="password" id="api-key"
-                        class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium mb-1">Temperature</label>
-                    <input type="range" id="temperature" min="0" max="2" step="0.1" 
-                        class="w-full mb-1"
-                        oninput="document.getElementById('temperature-value').textContent = this.value">
-                    <span class="text-xs text-gray-500" id="temperature-value">1.0</span>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-medium mb-1">Top P</label>
-                    <input type="range" id="top-p" min="0" max="1" step="0.05"
-                        class="w-full mb-1"
-                        oninput="document.getElementById('top-p-value').textContent = this.value">
-                    <span class="text-xs text-gray-500" id="top-p-value">0.95</span>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-medium mb-1">Max Tokens</label>
-                    <input type="number" id="max-tokens" min="1"
-                        class="w-full p-2 text-xs border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+            <!-- Chat Area -->
+            <div id="chat-messages" class="flex-1 overflow-y-auto scroll-smooth pt-16 pb-48 px-3">
+                <div class="max-w-3xl mx-auto space-y-4" id="messages-container">
+                    <!-- Messages will be injected here -->
                 </div>
             </div>
 
-            <!-- Save button and warning -->
-            <div class="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
-                <div id="settings-warning" class="hidden mb-2 text-xs text-yellow-600 dark:text-yellow-400">
-                    <div class="flex items-center gap-1">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                        <span>You have unsaved changes</span>
+            <!-- Input Area -->
+            <div
+                class="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-gray-50 via-gray-50 to-transparent dark:from-gray-950 dark:via-gray-950 dark:to-transparent pt-10">
+                <div class="max-w-3xl mx-auto">
+                    <!-- File Previews -->
+                    <div id="file-preview-container" class="flex gap-2 mb-2 overflow-x-auto py-2 hidden"></div>
+
+                    <!-- Input Box -->
+                    <form id="chat-form" class="relative group">
+                        <div
+                            class="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl blur opacity-20 group-hover:opacity-30 transition-opacity duration-500">
+                        </div>
+                        <div
+                            class="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl flex items-center p-2 gap-2 transition-colors">
+                            <!-- File Upload -->
+                            <label
+                                class="p-3 text-gray-400 hover:text-blue-500 cursor-pointer transition-colors rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800">
+                                <input type="file" id="file-input" class="hidden" multiple>
+                                <i class="fa-solid fa-paperclip text-lg"></i>
+                            </label>
+
+                            <!-- Text Input -->
+                            <textarea id="message-input" rows="1"
+                                class="flex-1 bg-transparent border-none focus:ring-0 p-2.5 max-h-32 resize-none text-gray-900 dark:text-gray-100 placeholder-gray-400 text-sm"
+                                placeholder="Type a message..."></textarea>
+
+                            <!-- Send Button -->
+                            <button type="submit" id="send-button"
+                                class="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-600/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                                <i class="fa-solid fa-paper-plane"></i>
+                            </button>
+
+                            <!-- Stop Button -->
+                            <button type="button" id="stop-button"
+                                class="hidden p-3 bg-red-500 hover:bg-red-600 text-white rounded-xl shadow-lg shadow-red-500/20 transition-all duration-200">
+                                <i class="fa-solid fa-stop"></i>
+                            </button>
+                        </div>
+                    </form>
+                    <div class="text-center mt-2">
+                        <p class="text-xs text-gray-400 dark:text-gray-500">AI can make mistakes. Please verify
+                            important information.</p>
                     </div>
                 </div>
-                <button onclick="saveSettings()" 
-                    class="w-full px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 
-                           text-white rounded-lg hover:from-blue-600 hover:to-blue-700 
-                           transition-all duration-200 transform hover:scale-[1.02] 
-                           flex items-center justify-center gap-2 shadow-lg hover:shadow-blue-500/50">
-                    Save Configuration
-                </button>
             </div>
-            <!-- Settings toggle button -->
-            <button class="settings-toggle" onclick="toggleSettingsSidebar()" title="Toggle Settings">
-                <i class="fas fa-chevron-left w-4 h-4 transition-transform duration-300"></i>
+
+            <!-- Jump to Bottom -->
+            <button id="jump-to-bottom"
+                class="absolute bottom-32 right-8 p-3 bg-gray-900 dark:bg-gray-700 text-white rounded-full shadow-lg opacity-0 translate-y-4 transition-all duration-300 z-20 hover:bg-gray-800"
+                onclick="scrollToBottom()">
+                <i class="fa-solid fa-arrow-down"></i>
             </button>
-        </div>
-    </aside>
+        </main>
 
-    <!-- Add Modal for Prompts -->
-    <div id="prompt-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-96 max-w-[90%]" onclick="event.stopPropagation()">
-            <h3 class="text-lg font-semibold mb-4" id="prompt-modal-title">Create New Prompt</h3>
-            <form id="prompt-form" class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium mb-1">Prompt Name</label>
-                    <input type="text" id="prompt-name" 
-                        class="w-full p-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
-                        required>
+        <!-- Settings Sidebar (Right) - Hidden by default -->
+        <aside id="settings-sidebar"
+            class="fixed inset-y-0 right-0 w-80 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 transform translate-x-full transition-transform duration-300 z-40 shadow-2xl">
+            <div class="h-full flex flex-col">
+                <div class="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                    <h2 class="font-semibold text-lg">Settings</h2>
+                    <div class="flex items-center gap-2">
+                        <button onclick="createNewSettingsConfig()"
+                            class="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors"
+                            title="Create new configuration">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                        <button onclick="toggleSettings()"
+                            class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                            <i class="fa-solid fa-xmark text-xl"></i>
+                        </button>
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1">Prompt Text</label>
-                    <textarea id="prompt-text" rows="4"
-                            class="w-full p-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
-                            required></textarea>
+                <div class="flex-1 overflow-y-auto p-4 space-y-6">
+                    <!-- Configuration selector -->
+                    <div class="mb-4">
+                        <label class="block text-xs font-medium mb-2 text-gray-700 dark:text-gray-300">Active
+                            Configuration</label>
+                        <select id="settings-selector"
+                            class="w-full p-2 text-sm border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">API
+                                Host</label>
+                            <input type="text" id="api-host"
+                                class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">API
+                                Key</label>
+                            <input type="password" id="api-key"
+                                class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Model
+                                Name</label>
+                            <input type="text" id="model-name"
+                                class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Temperature:
+                                <span id="temp-value">0.7</span></label>
+                            <input type="range" id="temperature" min="0" max="2" step="0.1"
+                                class="w-full accent-blue-600">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Max
+                                Tokens</label>
+                            <input type="number" id="max-tokens"
+                                class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Top P: <span
+                                    id="top-p-value">0.9</span></label>
+                            <input type="range" id="top-p" min="0" max="1" step="0.05" class="w-full accent-blue-600">
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t border-gray-200 dark:border-gray-800 flex gap-2">
+                        <button id="save-settings"
+                            class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-lg shadow-blue-600/20 transition-colors">Save</button>
+                        <button id="set-default-settings"
+                            class="flex-1 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg transition-colors">Set
+                            Default</button>
+                    </div>
                 </div>
-                <div class="flex justify-end gap-2">
-                    <button type="button" onclick="closePromptModal()"
-                            class="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
-                        Cancel
-                    </button>
-                    <button type="submit"
-                            class="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600">
-                        Save
-                    </button>
-                </div>
-            </form>
+            </div>
+        </aside>
+
+        <!-- Overlay for mobile sidebar -->
+        <div id="sidebar-overlay"
+            class="fixed inset-0 bg-black/50 z-20 hidden sm:hidden backdrop-blur-sm transition-opacity"
+            onclick="closeSidebar()"></div>
+    </div>
+
+    <!-- Settings Overlay -->
+    <div id="settings-overlay" onclick="toggleSettings()"
+        class="fixed inset-0 bg-black/20 backdrop-blur-sm z-30 hidden transition-opacity opacity-0"></div>
+
+    <!-- Generic Modal -->
+    <div id="custom-modal" class="fixed inset-0 z-50 hidden items-center justify-center">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 transform transition-all scale-95 opacity-0"
+            id="modal-content">
+            <div class="p-5 border-b border-gray-100 dark:border-gray-800">
+                <h3 id="modal-title" class="text-lg font-semibold text-gray-900 dark:text-white"></h3>
+            </div>
+            <div class="p-5">
+                <p id="modal-message" class="text-gray-600 dark:text-gray-300 text-sm leading-relaxed"></p>
+            </div>
+            <div class="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl flex justify-end gap-3" id="modal-actions">
+                <!-- Buttons injected by JS -->
+            </div>
         </div>
     </div>
 
-    <!-- Add Settings Modal -->
-    <div id="settings-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-96 max-w-[90%]" onclick="event.stopPropagation()">
-            <h3 class="text-lg font-semibold mb-4">Create New Settings Configuration</h3>
-            <form id="new-settings-form" class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium mb-1">Configuration Name</label>
-                    <input type="text" id="new-config-name" 
-                        class="w-full p-2 text-sm border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                        required
-                        placeholder="Enter configuration name">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1">Template</label>
-                    <select id="settings-template" 
-                            class="w-full p-2 text-sm border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
-                        <option value="default">Default Settings</option>
-                        <option value="copy-current">Copy Current Settings</option>
-                    </select>
-                </div>
-                <div class="flex justify-end gap-2 mt-4">
-                    <button type="button" onclick="closeSettingsModal()"
-                            class="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
-                        Cancel
-                    </button>
-                    <button type="submit"
-                            class="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600">
-                        Create
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
-    <script src="/static/script.js?cb={{ time }}" defer></script>
-    <script>
-    function toggleSystemPrompt() {
-        const container = document.getElementById('system-prompt-container');
-        const chevron = document.getElementById('system-prompt-chevron');
-        
-        // Toggle the collapsed state with a smoother height transition
-        if (!container.style.maxHeight || container.style.maxHeight === '0px') {
-            container.style.maxHeight = container.scrollHeight + 'px';
-            container.classList.remove('opacity-0');
-            chevron.classList.add('rotate-180');
-        } else {
-            container.style.maxHeight = '0px';
-            container.classList.add('opacity-0');
-            chevron.classList.remove('rotate-180');
-        }
-        
-        // Save preference to localStorage
-        localStorage.setItem('systemPromptCollapsed', container.style.maxHeight === '0px');
-    }
-
-    // Set initial state on page load
-    document.addEventListener('DOMContentLoaded', () => {
-        const container = document.getElementById('system-prompt-container');
-        const chevron = document.getElementById('system-prompt-chevron');
-        const isCollapsed = localStorage.getItem('systemPromptCollapsed') === 'true';
-        
-        if (isCollapsed) {
-            container.style.maxHeight = '0px';
-            container.classList.add('opacity-0');
-        } else {
-            container.style.maxHeight = container.scrollHeight + 'px';
-            chevron.classList.add('rotate-180');
-        }
-    }, { once: true });
-
-    function toggleSettingsSidebar() {
-        const sidebar = document.querySelector('.settings-sidebar');
-        const chatArea = document.querySelector('.chat-area');
-        const chevron = document.querySelector('.settings-toggle i');
-        const isCollapsed = sidebar.classList.toggle('collapsed');
-        chatArea.classList.toggle('sidebar-collapsed');
-        
-        // Rotate the chevron icon
-        chevron.style.transform = isCollapsed ? 'rotate(180deg)' : '';
-        
-        // Save the state to localStorage
-        localStorage.setItem('settingsSidebarCollapsed', isCollapsed);
-    }
-
-    // Restore sidebar state on page load
-    document.addEventListener('DOMContentLoaded', () => {
-        const sidebar = document.querySelector('.settings-sidebar');
-        const chatArea = document.querySelector('.chat-area');
-        const chevron = document.querySelector('.settings-toggle i');
-        const isCollapsed = localStorage.getItem('settingsSidebarCollapsed') === 'true';
-        
-        if (isCollapsed) {
-            sidebar.classList.add('collapsed');
-            chatArea.classList.add('sidebar-collapsed');
-            chevron.style.transform = 'rotate(180deg)';
-        }
-    });
-    </script>
-    <!-- Add Message Edit Modal -->
-    <div id="message-edit-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-[80%] max-w-3xl" onclick="event.stopPropagation()">
-            <h3 class="text-lg font-semibold mb-4">Edit Message</h3>
-            <form id="message-edit-form" class="space-y-4">
+    <!-- Modals -->
+    <!-- Edit Message Modal -->
+    <div id="message-edit-modal"
+        class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div
+            class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-100">
+            <div class="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
+                <h3 class="font-semibold text-lg">Edit Message</h3>
+                <button onclick="closeEditModal()" class="text-gray-500 hover:text-gray-700 dark:text-gray-400">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <form id="message-edit-form" class="p-4">
                 <input type="hidden" id="edit-message-id">
-                <div>
-                    <label class="block text-sm font-medium mb-1">Message Content</label>
-                    <textarea id="edit-message-content" rows="8"
-                            class="w-full p-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
-                            required></textarea>
-                </div>
+                <textarea id="edit-message-content" rows="6"
+                    class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 outline-none resize-none mb-4"></textarea>
                 <div class="flex justify-end gap-2">
                     <button type="button" onclick="closeEditModal()"
-                            class="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
-                        Cancel
-                    </button>
+                        class="px-4 py-2 text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 rounded-lg transition-colors">Cancel</button>
                     <button type="submit"
-                            class="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600">
-                        Save
-                    </button>
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-lg shadow-blue-600/20 transition-colors">Save
+                        Changes</button>
                 </div>
             </form>
         </div>
     </div>
-    <!-- Add Summary Edit Modal -->
-    <div id="summary-edit-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-96 max-w-[90%]" onclick="event.stopPropagation()">
-            <h3 class="text-lg font-semibold mb-4">Edit Conversation Summary</h3>
-            <form id="summary-edit-form" class="space-y-4">
-                <input type="hidden" id="edit-summary-conversation-id">
-                <div>
-                    <label class="block text-sm font-medium mb-1">Summary</label>
-                    <textarea id="edit-summary-content" rows="3"
-                            class="w-full p-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
-                            required></textarea>
-                </div>
-                <div class="flex justify-end gap-2">
-                    <button type="button" onclick="closeSummaryModal()"
-                            class="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
-                        Cancel
-                    </button>
-                    <button type="submit"
-                            class="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600">
-                        Save
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-    <!-- Delete Confirmation Modal (universal usecase) -->
-    <div id="confirmation-modal"
-        class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
-        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-96 max-w-[90%]" onclick="event.stopPropagation()">
-            <h3 id="confirmation-title" class="text-lg font-semibold mb-4"></h3>
-            <p id="confirmation-message" class="text-sm text-gray-600 dark:text-gray-300"></p>
 
-            <input type="hidden" id="confirmation-action" value="">
-            <input type="hidden" id="confirmation-id" value="">
-
-            <div class="flex justify-end gap-2 mt-4">
-                <button id="cancel-action" type="button" onclick="closeConfirmationModal()"
-                    class="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
-                    Cancel
-                </button>
-                <button id="confirm-action" class="px-4 py-2 text-sm text-white rounded-lg">
-                    Confirm
-                </button>
-            </div>
-        </div>
-    </div>
+    <!-- Scripts -->
+    <script src="/static/script.js"></script>
 </body>
 
 </html>
