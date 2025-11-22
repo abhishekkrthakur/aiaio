@@ -445,21 +445,37 @@
 
                     <!-- System Prompt Tab -->
                     <div id="settings-tab-system-prompt" class="p-4 space-y-4 hidden">
-                        <div class="flex gap-2 mb-3">
-                            <select id="prompt-selector"
-                                class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                            <button onclick="openPromptModal()"
-                                class="p-2 text-gray-500 hover:text-blue-600 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
-                                <i class="fa-solid fa-plus"></i>
-                            </button>
+                        <div class="mb-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">Prompt
+                                    Template</label>
+                                <div class="flex gap-2">
+                                    <button onclick="createNewPrompt()"
+                                        class="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                                        title="Create new prompt">
+                                        <i class="fa-solid fa-plus"></i>
+                                    </button>
+                                    <button onclick="deleteCurrentPrompt()"
+                                        class="text-xs px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                                        title="Delete current prompt">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <select id="prompt-selector" onchange="handlePromptChange(event)"
+                                class="w-full p-2 text-sm border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none"></select>
                         </div>
-                        <textarea id="system-prompt" rows="8"
-                            class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                            placeholder="Enter system instructions..."></textarea>
-                        <div class="flex justify-end">
-                            <button id="save-prompt-button"
-                                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">Save</button>
+                        <div>
+                            <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Prompt
+                                Content</label>
+                            <textarea id="system-prompt" rows="8"
+                                class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                                placeholder="Enter system instructions..."></textarea>
                         </div>
+                        <button onclick="savePromptChanges()"
+                            class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition-colors text-sm font-medium shadow-lg shadow-blue-600/20">
+                            Save Prompt
+                        </button>
                     </div>
                 </div>
             </div>
@@ -488,6 +504,30 @@
             </div>
             <div class="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl flex justify-end gap-3" id="modal-actions">
                 <!-- Buttons injected by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Input Modal -->
+    <div id="input-modal" class="fixed inset-0 z-50 hidden items-center justify-center">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity" onclick="closeInputModal()"></div>
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 transform transition-all scale-95 opacity-0"
+            id="input-modal-content">
+            <div class="p-5 border-b border-gray-100 dark:border-gray-800">
+                <h3 id="input-modal-title" class="text-lg font-semibold text-gray-900 dark:text-white"></h3>
+            </div>
+            <div class="p-5 space-y-4" id="input-modal-fields">
+                <!-- Fields will be injected here -->
+            </div>
+            <div class="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl flex justify-end gap-3">
+                <button onclick="closeInputModal()"
+                    class="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm font-medium">
+                    Cancel
+                </button>
+                <button id="input-modal-confirm"
+                    class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium shadow-lg shadow-blue-600/20">
+                    Confirm
+                </button>
             </div>
         </div>
     </div>

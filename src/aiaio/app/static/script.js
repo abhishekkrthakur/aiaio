@@ -37,7 +37,7 @@ const elements = {
     settingsSidebar: document.getElementById('settings-sidebar'),
     sidebarOverlay: document.getElementById('sidebar-overlay'),
     promptSelector: document.getElementById('prompt-selector'),
-    savePromptButton: document.getElementById('save-prompt-button'),
+
     settingsSelector: document.getElementById('settings-selector'),
     saveSettingsButton: document.getElementById('save-settings'),
     setDefaultSettingsButton: document.getElementById('set-default-settings')
@@ -70,7 +70,7 @@ function initializeEventListeners() {
     elements.chatMessages.addEventListener('scroll', handleScroll);
     elements.promptSelector?.addEventListener('change', handlePromptChange);
     elements.systemPrompt.addEventListener('input', handlePromptTextChange);
-    elements.savePromptButton.addEventListener('click', savePromptChanges);
+
 
     // Settings listeners
     elements.settingsSelector?.addEventListener('change', handleSettingsChange);
@@ -167,6 +167,129 @@ function closeModal() {
     content.classList.remove('scale-100', 'opacity-100');
     content.classList.add('scale-95', 'opacity-0');
 
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }, 200);
+}
+
+function showInputModal(title, label, placeholder = '', defaultValue = '') {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('input-modal');
+        const content = document.getElementById('input-modal-content');
+        const titleEl = document.getElementById('input-modal-title');
+        const fieldsContainer = document.getElementById('input-modal-fields');
+        const confirmBtn = document.getElementById('input-modal-confirm');
+
+        titleEl.textContent = title;
+        fieldsContainer.innerHTML = `
+            <div>
+                <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">${label}</label>
+                <input type="text" id="input-modal-field-0"
+                    class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="${placeholder}" value="${defaultValue}">
+            </div>
+        `;
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        setTimeout(() => {
+            content.classList.remove('scale-95', 'opacity-0');
+            content.classList.add('scale-100', 'opacity-100');
+            document.getElementById('input-modal-field-0').focus();
+        }, 10);
+
+        const handleConfirm = () => {
+            const value = document.getElementById('input-modal-field-0').value.trim();
+            closeInputModal();
+            resolve(value || null);
+            cleanup();
+        };
+
+        const handleCancel = () => {
+            closeInputModal();
+            resolve(null);
+            cleanup();
+        };
+
+        const handleKeyPress = (e) => {
+            if (e.key === 'Enter') handleConfirm();
+            if (e.key === 'Escape') handleCancel();
+        };
+
+        const cleanup = () => {
+            confirmBtn.removeEventListener('click', handleConfirm);
+            fieldsContainer.removeEventListener('keypress', handleKeyPress);
+        };
+
+        confirmBtn.addEventListener('click', handleConfirm);
+        fieldsContainer.addEventListener('keypress', handleKeyPress);
+    });
+}
+
+function showMultiInputModal(title, fields) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('input-modal');
+        const content = document.getElementById('input-modal-content');
+        const titleEl = document.getElementById('input-modal-title');
+        const fieldsContainer = document.getElementById('input-modal-fields');
+        const confirmBtn = document.getElementById('input-modal-confirm');
+
+        titleEl.textContent = title;
+        fieldsContainer.innerHTML = fields.map((field, index) => `
+            <div>
+                <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">${field.label}</label>
+                <input type="text" id="input-modal-field-${index}"
+                    class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="${field.placeholder || ''}" value="${field.defaultValue || ''}">
+            </div>
+        `).join('');
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        setTimeout(() => {
+            content.classList.remove('scale-95', 'opacity-0');
+            content.classList.add('scale-100', 'opacity-100');
+            document.getElementById('input-modal-field-0').focus();
+        }, 10);
+
+        const handleConfirm = () => {
+            const values = fields.map((_, index) =>
+                document.getElementById(`input-modal-field-${index}`).value.trim()
+            );
+            closeInputModal();
+            // Return null if any required field is empty
+            const allFilled = values.every(v => v);
+            resolve(allFilled ? values : null);
+            cleanup();
+        };
+
+        const handleCancel = () => {
+            closeInputModal();
+            resolve(null);
+            cleanup();
+        };
+
+        const handleKeyPress = (e) => {
+            if (e.key === 'Enter') handleConfirm();
+            if (e.key === 'Escape') handleCancel();
+        };
+
+        const cleanup = () => {
+            confirmBtn.removeEventListener('click', handleConfirm);
+            fieldsContainer.removeEventListener('keypress', handleKeyPress);
+        };
+
+        confirmBtn.addEventListener('click', handleConfirm);
+        fieldsContainer.addEventListener('keypress', handleKeyPress);
+    });
+}
+
+function closeInputModal() {
+    const modal = document.getElementById('input-modal');
+    const content = document.getElementById('input-modal-content');
+    content.classList.remove('scale-100', 'opacity-100');
+    content.classList.add('scale-95', 'opacity-0');
     setTimeout(() => {
         modal.classList.add('hidden');
         modal.classList.remove('flex');
@@ -397,19 +520,31 @@ async function editConversationTitle(conversationId, event) {
     const summaryElement = conversationElement?.querySelector('.summary-text');
     const currentTitle = summaryElement?.textContent.trim() || 'New Conversation';
 
-    const newTitle = prompt('Enter new title:', currentTitle);
+    const newTitle = await showInputModal(
+        'Rename Conversation',
+        'Enter new title',
+        'Conversation title',
+        currentTitle
+    );
+
     if (!newTitle || newTitle === currentTitle) return;
 
     try {
-        await fetch(`/conversations/${conversationId}/title`, {
+        const response = await fetch(`/conversations/${conversationId}/title`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ title: newTitle })
         });
-        // WebSocket will handle the UI update
+
+        if (response.ok) {
+            summaryElement.textContent = newTitle;
+            showToast('Title updated successfully!');
+        } else {
+            showToast('Failed to update title', 'error');
+        }
     } catch (error) {
-        console.error('Error updating conversation title:', error);
-        showModal('Error', 'Failed to update conversation title', 'error');
+        console.error('Error updating title:', error);
+        showToast('Failed to update title', 'error');
     }
 }
 
@@ -877,7 +1012,7 @@ async function loadPrompts() {
         const response = await fetch('/prompts');
         const data = await response.json();
 
-        elements.promptSelector.innerHTML = '<option value="">Select a prompt...</option>';
+        elements.promptSelector.innerHTML = '';
         data.prompts.forEach(prompt => {
             const option = document.createElement('option');
             option.value = prompt.id;
@@ -885,6 +1020,14 @@ async function loadPrompts() {
             if (prompt.is_active) option.selected = true;
             elements.promptSelector.appendChild(option);
         });
+
+        // Load the active prompt's content
+        if (data.prompts.length > 0) {
+            const activePrompt = data.prompts.find(p => p.is_active) || data.prompts[0];
+            const promptResponse = await fetch(`/prompts/${activePrompt.id}`);
+            const promptData = await promptResponse.json();
+            elements.systemPrompt.value = promptData.content;
+        }
     } catch (error) {
         console.error('Error loading prompts:', error);
     }
@@ -921,26 +1064,40 @@ async function savePromptChanges() {
         return;
     }
 
+    const promptName = promptSelector.options[promptSelector.selectedIndex].text;
+
     try {
         const response = await fetch(`/prompts/${selectedPromptId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+                name: promptName,
                 text: promptText.value
             })
         });
 
-        if (!response.ok) throw new Error('Failed to save prompt');
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to save prompt');
+        }
 
-        showToast('Prompt saved successfully!');
+        // Also set as active
+        await fetch(`/prompts/${selectedPromptId}/activate`, { method: 'POST' });
+
+        showToast('Prompt saved and activated!');
     } catch (error) {
         console.error('Error saving prompt:', error);
-        showToast('Failed to save prompt', 'error');
+        showToast(error.message || 'Failed to save prompt', 'error');
     }
 }
 
 async function createNewPrompt() {
-    const name = prompt('Enter a name for the new prompt:', 'New Prompt');
+    const name = await showInputModal(
+        'New Prompt',
+        'Enter prompt name',
+        'e.g., Code Assistant, Creative Writer',
+        'New Prompt'
+    );
     if (!name) return;
 
     const promptText = elements.systemPrompt.value || '';
@@ -963,6 +1120,34 @@ async function createNewPrompt() {
         console.error('Error creating prompt:', error);
         showToast('Failed to create prompt', 'error');
     }
+}
+
+async function deleteCurrentPrompt() {
+    const promptSelector = elements.promptSelector;
+    const selectedPromptId = promptSelector.value;
+
+    if (!selectedPromptId) {
+        showToast('Please select a prompt first', 'error');
+        return;
+    }
+
+    const promptName = promptSelector.options[promptSelector.selectedIndex].text;
+
+    showModal('Delete Prompt', `Are you sure you want to delete "${promptName}"? This action cannot be undone.`, 'confirm', async () => {
+        try {
+            const response = await fetch(`/prompts/${selectedPromptId}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) throw new Error('Failed to delete prompt');
+
+            showToast('Prompt deleted successfully!');
+            await loadPrompts();
+        } catch (error) {
+            console.error('Error deleting prompt:', error);
+            showToast('Failed to delete prompt', 'error');
+        }
+    });
 }
 
 function handleVisibilityChange() {
@@ -1047,11 +1232,22 @@ async function loadModels(providerId) {
 }
 
 async function createNewSettingsConfig() {
-    const name = prompt('Enter a name for the new provider:', 'New Provider');
-    if (!name) return;
+    const values = await showMultiInputModal('New Provider', [
+        {
+            label: 'Provider Name',
+            placeholder: 'e.g., OpenAI, Anthropic, Local',
+            defaultValue: 'New Provider'
+        },
+        {
+            label: 'API Host',
+            placeholder: 'e.g., http://localhost:8000/v1',
+            defaultValue: 'http://localhost:8000/v1'
+        }
+    ]);
 
-    const host = prompt('Enter API host:', 'http://localhost:8000/v1');
-    if (!host) return;
+    if (!values) return;
+
+    const [name, host] = values;
 
     try {
         const newProvider = {
@@ -1085,7 +1281,7 @@ async function createNewSettingsConfig() {
 
     } catch (error) {
         console.error('Error creating provider:', error);
-        showModal('Error', error.message, 'error');
+        showToast(error.message || 'Failed to create provider', 'error');
     }
 }
 
@@ -1149,7 +1345,12 @@ async function setDefaultSettings(silent = false) {
 
 async function addModel() {
     const providerId = elements.settingsSelector.value;
-    const modelName = prompt('Enter model name:', '');
+    const modelName = await showInputModal(
+        'Add Model',
+        'Enter model name',
+        'e.g., gpt-4, claude-3-opus',
+        ''
+    );
     if (!modelName) return;
 
     try {
@@ -1167,17 +1368,17 @@ async function addModel() {
 }
 
 async function deleteModel(modelId) {
-    if (!confirm('Are you sure you want to delete this model?')) return;
-
-    try {
-        await fetch(`/models/${modelId}`, { method: 'DELETE' });
-        showToast('Model deleted successfully!');
-        const providerId = elements.settingsSelector.value;
-        await loadModels(providerId);
-    } catch (error) {
-        console.error('Error deleting model:', error);
-        showToast('Failed to delete model', 'error');
-    }
+    showModal('Delete Model', 'Are you sure you want to delete this model? This action cannot be undone.', 'confirm', async () => {
+        try {
+            await fetch(`/models/${modelId}`, { method: 'DELETE' });
+            showToast('Model deleted successfully!');
+            const providerId = elements.settingsSelector.value;
+            await loadModels(providerId);
+        } catch (error) {
+            console.error('Error deleting model:', error);
+            showToast('Failed to delete model', 'error');
+        }
+    });
 }
 
 async function setDefaultModel(modelId) {
