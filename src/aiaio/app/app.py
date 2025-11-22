@@ -191,6 +191,16 @@ request_context: ContextVar[RequestContext] = ContextVar("request_context", defa
 
 async def text_streamer(messages: List[Dict[str, str]], client_id: str):
     """Stream text responses from the AI model."""
+    # Get settings and create client first
+    db_settings = db.get_settings()
+    if not db_settings:
+        raise HTTPException(status_code=404, detail="No default settings found")
+
+    client = OpenAI(
+        api_key=db_settings["api_key"] if db_settings["api_key"] != "" else "empty",
+        base_url=db_settings["host"],
+    )
+
     formatted_messages = []
 
     for msg in messages:
@@ -205,15 +215,26 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
 
             for att in attachments:
                 file_type = att.get("file_type", "").split("/")[0]
-                with open(att["file_path"], "rb") as f:
+                file_path = att["file_path"]
+                mime_type = att.get("file_type", "application/octet-stream")
+
+                # For all file types, encode as base64 and let the API handle it
+                with open(file_path, "rb") as f:
                     file_data = base64.b64encode(f.read()).decode()
 
-                content_type_map = {"image": "image_url", "video": "video_url", "audio": "input_audio"}
-
-                # Only add supported media types
-                if file_type in content_type_map:
-                    url_key = content_type_map[file_type]
-                    content.append({"type": url_key, url_key: {"url": f"data:{att['file_type']};base64,{file_data}"}})
+                # Handle different file types
+                if file_type == "image":
+                    content.append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{file_data}"}})
+                elif file_type == "video":
+                    content.append({"type": "video_url", "video_url": {"url": f"data:{mime_type};base64,{file_data}"}})
+                elif file_type == "audio":
+                    content.append(
+                        {"type": "input_audio", "input_audio": {"url": f"data:{mime_type};base64,{file_data}"}}
+                    )
+                else:
+                    # For documents (PDF, etc), send as image_url with proper MIME type
+                    # Many APIs support this for document understanding
+                    content.append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{file_data}"}})
 
             formatted_msg["content"] = content
         else:
@@ -221,15 +242,6 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
             formatted_msg["content"] = msg["content"]
 
         formatted_messages.append(formatted_msg)
-
-    db_settings = db.get_settings()
-    if not db_settings:
-        raise HTTPException(status_code=404, detail="No default settings found")
-
-    client = OpenAI(
-        api_key=db_settings["api_key"] if db_settings["api_key"] != "" else "empty",
-        base_url=db_settings["host"],
-    )
 
     stream = None
     try:
