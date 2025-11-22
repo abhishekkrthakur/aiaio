@@ -394,7 +394,7 @@ class ChatDatabase:
         """Get the default provider with its settings."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            provider = conn.execute('SELECT * FROM providers WHERE is_default = true').fetchone()
+            provider = conn.execute("SELECT * FROM providers WHERE is_default = true").fetchone()
             return dict(provider) if provider else None
 
     def get_all_providers(self) -> List[Dict]:
@@ -468,8 +468,7 @@ class ChatDatabase:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             models = conn.execute(
-                "SELECT * FROM models WHERE provider_id = ? ORDER BY is_default DESC, model_name",
-                (provider_id,)
+                "SELECT * FROM models WHERE provider_id = ? ORDER BY is_default DESC, model_name", (provider_id,)
             ).fetchall()
             return [dict(m) for m in models]
 
@@ -478,34 +477,33 @@ class ChatDatabase:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             model = conn.execute(
-                "SELECT * FROM models WHERE provider_id = ? AND is_default = true",
-                (provider_id,)
+                "SELECT * FROM models WHERE provider_id = ? AND is_default = true", (provider_id,)
             ).fetchone()
             return dict(model) if model else None
 
-    def add_model(self, provider_id: int, model_name: str, is_default: bool = False, is_multimodal: bool = False) -> int:
+    def add_model(
+        self, provider_id: int, model_name: str, is_default: bool = False, is_multimodal: bool = False
+    ) -> int:
         """Add a model to a provider."""
         with sqlite3.connect(self.db_path) as conn:
             # Check if this is the first model for the provider
             existing_models = conn.execute(
-                "SELECT COUNT(*) FROM models WHERE provider_id = ?",
-                (provider_id,)
+                "SELECT COUNT(*) FROM models WHERE provider_id = ?", (provider_id,)
             ).fetchone()[0]
-            
+
             # If this is the first model, make it default automatically
             if existing_models == 0:
                 is_default = True
-            
+
             # If setting as default, unset other defaults for this provider
             if is_default:
                 conn.execute(
-                    "UPDATE models SET is_default = false WHERE provider_id = ? AND is_default = true",
-                    (provider_id,)
+                    "UPDATE models SET is_default = false WHERE provider_id = ? AND is_default = true", (provider_id,)
                 )
-            
+
             cursor = conn.execute(
                 "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
-                (provider_id, model_name, is_default, is_multimodal)
+                (provider_id, model_name, is_default, is_multimodal),
             )
             return cursor.lastrowid
 
@@ -522,13 +520,12 @@ class ChatDatabase:
             provider_id = conn.execute("SELECT provider_id FROM models WHERE id = ?", (model_id,)).fetchone()
             if not provider_id:
                 return False
-            
+
             # Unset other defaults for this provider
             conn.execute(
-                "UPDATE models SET is_default = false WHERE provider_id = ? AND is_default = true",
-                (provider_id[0],)
+                "UPDATE models SET is_default = false WHERE provider_id = ? AND is_default = true", (provider_id[0],)
             )
-            
+
             # Set this model as default
             cursor = conn.execute("UPDATE models SET is_default = true WHERE id = ?", (model_id,))
             return cursor.rowcount > 0

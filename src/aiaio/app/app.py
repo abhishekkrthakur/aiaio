@@ -206,7 +206,7 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
     provider = db.get_default_provider()
     if not provider:
         raise HTTPException(status_code=404, detail="No default provider found")
-    
+
     default_model = db.get_default_model(provider["id"])
     if not default_model:
         raise HTTPException(status_code=404, detail="No default model found for provider")
@@ -495,6 +495,7 @@ async def delete_conversation(conversation_id: str):
 
 class ConversationTitleUpdate(BaseModel):
     """Model for updating conversation title."""
+
     title: str
 
 
@@ -515,7 +516,9 @@ async def update_conversation_title(conversation_id: str, update: ConversationTi
     """
     try:
         db.update_conversation_summary(conversation_id, update.title)
-        await manager.broadcast({"type": "summary_updated", "conversation_id": conversation_id, "summary": update.title})
+        await manager.broadcast(
+            {"type": "summary_updated", "conversation_id": conversation_id, "summary": update.title}
+        )
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -759,8 +759,22 @@ function updateAssistantMessage(content, messageDiv = null) {
     // Parse content
     let parsedContent = marked.parse(content);
 
+    // Sanitize content
+    parsedContent = DOMPurify.sanitize(parsedContent);
+
     // Update content
     contentDiv.innerHTML = parsedContent;
+
+    // Render Math
+    renderMathInElement(contentDiv, {
+        delimiters: [
+            { left: '$$', right: '$$', display: true },
+            { left: '$', right: '$', display: false },
+            { left: '\\(', right: '\\)', display: false },
+            { left: '\\[', right: '\\]', display: true }
+        ],
+        throwOnError: false
+    });
 
     // Check if user is near bottom before scrolling
     const container = document.getElementById('chat-messages');
@@ -1279,7 +1293,7 @@ async function createNewSettingsConfig() {
     const values = await showMultiInputModal('New Provider', [
         {
             label: 'Provider Name',
-            placeholder: 'e.g., OpenAI, Anthropic, Local',
+            placeholder: 'e.g., OpenAI, Anthropic, Custom',
             defaultValue: 'New Provider'
         },
         {
