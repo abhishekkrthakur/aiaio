@@ -236,14 +236,26 @@ function showMultiInputModal(title, fields) {
         const confirmBtn = document.getElementById('input-modal-confirm');
 
         titleEl.textContent = title;
-        fieldsContainer.innerHTML = fields.map((field, index) => `
-            <div>
-                <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">${field.label}</label>
-                <input type="text" id="input-modal-field-${index}"
-                    class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    placeholder="${field.placeholder || ''}" value="${field.defaultValue || ''}">
-            </div>
-        `).join('');
+        fieldsContainer.innerHTML = fields.map((field, index) => {
+            if (field.type === 'checkbox') {
+                return `
+                    <div class="flex items-center gap-2 mt-4">
+                        <input type="checkbox" id="input-modal-field-${index}"
+                            class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                            ${field.defaultValue ? 'checked' : ''}>
+                        <label for="input-modal-field-${index}" class="text-sm font-medium text-gray-700 dark:text-gray-300 select-none cursor-pointer">${field.label}</label>
+                    </div>
+                `;
+            }
+            return `
+                <div>
+                    <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">${field.label}</label>
+                    <input type="text" id="input-modal-field-${index}"
+                        class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        placeholder="${field.placeholder || ''}" value="${field.defaultValue || ''}">
+                </div>
+            `;
+        }).join('');
 
         modal.classList.remove('hidden');
         modal.classList.add('flex');
@@ -254,12 +266,17 @@ function showMultiInputModal(title, fields) {
         }, 10);
 
         const handleConfirm = () => {
-            const values = fields.map((_, index) =>
-                document.getElementById(`input-modal-field-${index}`).value.trim()
-            );
+            const values = fields.map((field, index) => {
+                const el = document.getElementById(`input-modal-field-${index}`);
+                if (field.type === 'checkbox') return el.checked;
+                return el.value.trim();
+            });
             closeInputModal();
-            // Return null if any required field is empty
-            const allFilled = values.every(v => v);
+            // Return null if any required text field is empty
+            const allFilled = values.every((v, i) => {
+                if (fields[i].type === 'checkbox') return true;
+                return v !== '';
+            });
             resolve(allFilled ? values : null);
             cleanup();
         };
@@ -1214,6 +1231,7 @@ async function loadModels(providerId) {
                 <div class="flex items-center gap-2">
                     ${model.is_default ? '<i class="fa-solid fa-star text-yellow-500 text-xs"></i>' : ''}
                     <span class="text-sm">${model.model_name}</span>
+                    ${model.is_multimodal ? '<i class="fa-solid fa-image text-blue-500 text-xs" title="Multimodal"></i>' : ''}
                 </div>
                 <div class="flex gap-1">
                     ${!model.is_default ? `<button onclick="setDefaultModel(${model.id})" class="p-1 text-gray-400 hover:text-yellow-500 transition-colors" title="Set as default">
@@ -1256,8 +1274,7 @@ async function createNewSettingsConfig() {
             temperature: 1.0,
             max_tokens: 4096,
             top_p: 0.95,
-            api_key: '',
-            is_multimodal: false
+            api_key: ''
         };
 
         const response = await fetch('/providers', {
@@ -1309,8 +1326,7 @@ async function saveSettings() {
         api_key: document.getElementById('api-key').value,
         temperature: parseFloat(document.getElementById('temperature').value),
         max_tokens: parseInt(document.getElementById('max-tokens').value),
-        top_p: parseFloat(document.getElementById('top-p').value),
-        is_multimodal: false // You can add a checkbox for this later
+        top_p: parseFloat(document.getElementById('top-p').value)
     };
 
     const providerId = elements.settingsSelector.value;
@@ -1345,19 +1361,32 @@ async function setDefaultSettings(silent = false) {
 
 async function addModel() {
     const providerId = elements.settingsSelector.value;
-    const modelName = await showInputModal(
-        'Add Model',
-        'Enter model name',
-        'e.g., gpt-4, claude-3-opus',
-        ''
-    );
-    if (!modelName) return;
+
+    const values = await showMultiInputModal('Add Model', [
+        {
+            label: 'Model Name',
+            placeholder: 'e.g., gpt-4, claude-3-opus',
+            defaultValue: '',
+            type: 'text'
+        },
+        {
+            label: 'Is Multimodal?',
+            defaultValue: false,
+            type: 'checkbox'
+        }
+    ]);
+
+    if (!values) return;
+    const [modelName, isMultimodal] = values;
 
     try {
         await fetch(`/providers/${providerId}/models`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model_name: modelName })
+            body: JSON.stringify({
+                model_name: modelName,
+                is_multimodal: isMultimodal
+            })
         });
         showToast('Model added successfully!');
         await loadModels(providerId);

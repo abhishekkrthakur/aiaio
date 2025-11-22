@@ -49,7 +49,6 @@ CREATE TABLE providers (
     top_p REAL DEFAULT 0.95,
     host TEXT NOT NULL,
     api_key TEXT DEFAULT '',
-    is_multimodal BOOLEAN DEFAULT false,
     created_at REAL DEFAULT (strftime('%s.%f', 'now')),
     updated_at REAL DEFAULT (strftime('%s.%f', 'now'))
 );
@@ -59,6 +58,7 @@ CREATE TABLE models (
     provider_id INTEGER NOT NULL,
     model_name TEXT NOT NULL,
     is_default BOOLEAN DEFAULT false,
+    is_multimodal BOOLEAN DEFAULT false,
     created_at REAL DEFAULT (strftime('%s.%f', 'now')),
     updated_at REAL DEFAULT (strftime('%s.%f', 'now')),
     FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE,
@@ -114,57 +114,57 @@ class ChatDatabase:
                     # Local provider
                     cursor = conn.execute(
                         """INSERT INTO providers
-                           (name, is_default, temperature, max_tokens, top_p, host, api_key, is_multimodal)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        ("Local", True, 1.0, 4096, 0.95, "http://localhost:8000/v1", "", False),
+                           (name, is_default, temperature, max_tokens, top_p, host, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        ("Local", True, 1.0, 4096, 0.95, "http://localhost:8000/v1", ""),
                     )
                     local_id = cursor.lastrowid
                     conn.execute(
-                        "INSERT INTO models (provider_id, model_name, is_default) VALUES (?, ?, ?)",
-                        (local_id, "meta-llama/Llama-3.2-1B-Instruct", True),
+                        "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
+                        (local_id, "meta-llama/Llama-3.2-1B-Instruct", True, False),
                     )
 
                     # OpenAI provider
                     cursor = conn.execute(
                         """INSERT INTO providers
-                           (name, is_default, temperature, max_tokens, top_p, host, api_key, is_multimodal)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        ("OpenAI", False, 1.0, 4096, 0.95, "https://api.openai.com/v1", "", True),
+                           (name, is_default, temperature, max_tokens, top_p, host, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        ("OpenAI", False, 1.0, 4096, 0.95, "https://api.openai.com/v1", ""),
                     )
                     openai_id = cursor.lastrowid
                     conn.execute(
-                        "INSERT INTO models (provider_id, model_name, is_default) VALUES (?, ?, ?)",
-                        (openai_id, "gpt-4o", True),
+                        "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
+                        (openai_id, "gpt-4o", True, True),
                     )
                     conn.execute(
-                        "INSERT INTO models (provider_id, model_name, is_default) VALUES (?, ?, ?)",
-                        (openai_id, "gpt-4o-mini", False),
+                        "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
+                        (openai_id, "gpt-4o-mini", False, True),
                     )
 
                     # Anthropic provider
                     cursor = conn.execute(
                         """INSERT INTO providers
-                           (name, is_default, temperature, max_tokens, top_p, host, api_key, is_multimodal)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        ("Anthropic", False, 1.0, 4096, 0.95, "https://api.anthropic.com/v1", "", True),
+                           (name, is_default, temperature, max_tokens, top_p, host, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        ("Anthropic", False, 1.0, 4096, 0.95, "https://api.anthropic.com/v1", ""),
                     )
                     anthropic_id = cursor.lastrowid
                     conn.execute(
-                        "INSERT INTO models (provider_id, model_name, is_default) VALUES (?, ?, ?)",
-                        (anthropic_id, "claude-3-5-sonnet-latest", True),
+                        "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
+                        (anthropic_id, "claude-3-5-sonnet-latest", True, True),
                     )
 
                     # Google provider
                     cursor = conn.execute(
                         """INSERT INTO providers
-                           (name, is_default, temperature, max_tokens, top_p, host, api_key, is_multimodal)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        ("Google", False, 1.0, 4096, 0.95, "https://generativelanguage.googleapis.com/v1beta", "", True),
+                           (name, is_default, temperature, max_tokens, top_p, host, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        ("Google", False, 1.0, 4096, 0.95, "https://generativelanguage.googleapis.com/v1beta", ""),
                     )
                     google_id = cursor.lastrowid
                     conn.execute(
-                        "INSERT INTO models (provider_id, model_name, is_default) VALUES (?, ?, ?)",
-                        (google_id, "gemini-2.0-flash-001", True),
+                        "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
+                        (google_id, "gemini-2.0-flash-001", True, True),
                     )
 
                 # Insert system prompts
@@ -416,8 +416,8 @@ class ChatDatabase:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 """INSERT INTO providers
-                   (name, temperature, max_tokens, top_p, host, api_key, is_multimodal)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (name, temperature, max_tokens, top_p, host, api_key)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
                 (
                     provider.get("name"),
                     provider.get("temperature", 1.0),
@@ -425,7 +425,6 @@ class ChatDatabase:
                     provider.get("top_p", 0.95),
                     provider.get("host"),
                     provider.get("api_key", ""),
-                    provider.get("is_multimodal", False),
                 ),
             )
             return cursor.lastrowid
@@ -436,7 +435,7 @@ class ChatDatabase:
             cursor = conn.execute(
                 """UPDATE providers
                    SET name = ?, temperature = ?, max_tokens = ?, top_p = ?,
-                       host = ?, api_key = ?, is_multimodal = ?, updated_at = strftime('%s.%f', 'now')
+                       host = ?, api_key = ?, updated_at = strftime('%s.%f', 'now')
                    WHERE id = ?""",
                 (
                     provider.get("name"),
@@ -445,7 +444,6 @@ class ChatDatabase:
                     provider.get("top_p", 0.95),
                     provider.get("host"),
                     provider.get("api_key", ""),
-                    provider.get("is_multimodal", False),
                     provider_id,
                 ),
             )
@@ -485,7 +483,7 @@ class ChatDatabase:
             ).fetchone()
             return dict(model) if model else None
 
-    def add_model(self, provider_id: int, model_name: str, is_default: bool = False) -> int:
+    def add_model(self, provider_id: int, model_name: str, is_default: bool = False, is_multimodal: bool = False) -> int:
         """Add a model to a provider."""
         with sqlite3.connect(self.db_path) as conn:
             # Check if this is the first model for the provider
@@ -506,8 +504,8 @@ class ChatDatabase:
                 )
             
             cursor = conn.execute(
-                "INSERT INTO models (provider_id, model_name, is_default) VALUES (?, ?, ?)",
-                (provider_id, model_name, is_default)
+                "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
+                (provider_id, model_name, is_default, is_multimodal)
             )
             return cursor.lastrowid
 

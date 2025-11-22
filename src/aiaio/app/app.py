@@ -153,7 +153,6 @@ class ProviderInput(BaseModel):
     top_p: Optional[float] = 0.95
     host: str
     api_key: Optional[str] = ""
-    is_multimodal: Optional[bool] = False
 
 
 class ModelInput(BaseModel):
@@ -165,6 +164,7 @@ class ModelInput(BaseModel):
     """
 
     model_name: str
+    is_multimodal: Optional[bool] = False
 
 
 class PromptInput(BaseModel):
@@ -611,7 +611,7 @@ async def get_provider_models(provider_id: int):
 async def add_provider_model(provider_id: int, model: ModelInput):
     """Add a model to a provider."""
     try:
-        model_id = db.add_model(provider_id, model.model_name)
+        model_id = db.add_model(provider_id, model.model_name, is_multimodal=model.is_multimodal)
         return {"status": "success", "id": model_id}
     except sqlite3.IntegrityError as e:
         if "unique" in str(e).lower():
