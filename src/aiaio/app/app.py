@@ -180,6 +180,21 @@ class PromptInput(BaseModel):
     text: str
 
 
+class ProjectInput(BaseModel):
+    """
+    Pydantic model for project input.
+
+    Attributes:
+        name (str): Project name
+        description (str): Project description
+        system_prompt (str): Default system prompt for the project
+    """
+
+    name: str
+    description: Optional[str] = ""
+    system_prompt: Optional[str] = ""
+
+
 class MessageEdit(BaseModel):
     """
     Pydantic model for message edit requests.
@@ -321,9 +336,12 @@ async def version():
 
 
 @app.get("/conversations")
-async def get_conversations():
+async def get_conversations(project_id: Optional[str] = None):
     """
     Retrieve all conversations.
+
+    Args:
+        project_id (str, optional): Filter by project ID
 
     Returns:
         dict: List of all conversations
@@ -332,7 +350,7 @@ async def get_conversations():
         HTTPException: If database operation fails
     """
     try:
-        conversations = db.get_all_conversations()
+        conversations = db.get_all_conversations(project_id)
         return {"conversations": conversations}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -361,8 +379,12 @@ async def get_conversation(conversation_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class CreateConversationInput(BaseModel):
+    project_id: Optional[str] = None
+
+
 @app.post("/create_conversation")
-async def create_conversation():
+async def create_conversation(input: Optional[CreateConversationInput] = None):
     """
     Create a new conversation.
 
@@ -373,7 +395,8 @@ async def create_conversation():
         HTTPException: If creation fails
     """
     try:
-        conversation_id = db.create_conversation()
+        project_id = input.project_id if input else None
+        conversation_id = db.create_conversation(project_id)
         await manager.broadcast({"type": "conversation_created", "conversation_id": conversation_id})
         return {"conversation_id": conversation_id}
     except Exception as e:
@@ -660,6 +683,72 @@ async def get_default_provider():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# Project endpoints
+@app.get("/projects")
+async def get_projects():
+    """Get all projects."""
+    try:
+        projects = db.get_projects()
+        return {"projects": projects}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/projects/{project_id}")
+async def get_project(project_id: str):
+    """Get project by ID."""
+    try:
+        project = db.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return project
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/projects")
+async def create_project(project: ProjectInput):
+    """Create a new project."""
+    try:
+        project_id = db.create_project(
+            name=project.name,
+            description=project.description,
+            system_prompt=project.system_prompt
+        )
+        return {"status": "success", "id": project_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/projects/{project_id}")
+async def update_project(project_id: str, project: ProjectInput):
+    """Update a project."""
+    try:
+        success = db.update_project(
+            project_id=project_id,
+            name=project.name,
+            description=project.description,
+            system_prompt=project.system_prompt
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/projects/{project_id}")
+async def delete_project(project_id: str):
+    """Delete a project."""
+    try:
+        success = db.delete_project(project_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def generate_safe_filename(original_filename: str) -> str:
     """
     Generate a safe filename with timestamp to prevent collisions.
@@ -710,6 +799,12 @@ async def get_system_prompt(conversation_id: str = None):
                 return {"system_prompt": last_system_message}
 
         # Default system prompt for new conversations or when no conversation_id is provided
+        # If conversation_id is provided, check its project
+        if conversation_id:
+            project = db.get_project_for_conversation(conversation_id)
+            if project and project.get("system_prompt"):
+                return {"system_prompt": project["system_prompt"]}
+
         active_prompt = db.get_active_prompt()
         return {"system_prompt": active_prompt["prompt_text"]}
     except Exception as e:

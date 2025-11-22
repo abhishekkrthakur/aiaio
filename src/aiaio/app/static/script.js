@@ -18,7 +18,10 @@ const state = {
     editingMessageId: null,
     abortController: null,
     clientId: crypto.randomUUID(),
-    selectedFiles: [] // Track selected files
+    clientId: crypto.randomUUID(),
+    selectedFiles: [], // Track selected files
+    currentProjectId: null,
+    projects: []
 };
 
 // DOM Elements
@@ -44,7 +47,20 @@ const elements = {
     // Top Bar Info
     infoProvider: document.getElementById('info-provider'),
     infoModel: document.getElementById('info-model'),
-    infoHost: document.getElementById('info-host')
+    infoProvider: document.getElementById('info-provider'),
+    infoModel: document.getElementById('info-model'),
+    infoHost: document.getElementById('info-host'),
+
+    // Project Elements
+    projectSelector: document.getElementById('project-selector'),
+    projectModal: document.getElementById('project-modal'),
+    projectModalContent: document.getElementById('project-modal-content'),
+    projectModalTitle: document.getElementById('project-modal-title'),
+    projectNameInput: document.getElementById('project-name'),
+    projectDescInput: document.getElementById('project-description'),
+    projectPromptInput: document.getElementById('project-system-prompt'),
+    projectIdInput: document.getElementById('project-id'),
+    deleteProjectBtn: document.getElementById('delete-project-btn')
 };
 
 // Initialize app
@@ -61,9 +77,11 @@ document.addEventListener('DOMContentLoaded', () => {
 }, { once: true });
 
 function initializeCore() {
-    loadConversations();
+    loadProjects().then(() => {
+        loadConversations();
+        startNewConversation();
+    });
     updateSystemPrompt();
-    startNewConversation();
     connectWebSocket();
     initializeSettings();
     loadVersion();
@@ -464,12 +482,179 @@ function handleWebSocketMessage(data) {
     }
 }
 
+// Project Management
+async function loadProjects() {
+    try {
+        const response = await fetch('/projects');
+        const data = await response.json();
+        state.projects = data.projects;
+
+        const selector = elements.projectSelector;
+        selector.innerHTML = '';
+
+        data.projects.forEach(project => {
+            const option = document.createElement('option');
+            option.value = project.project_id;
+            option.textContent = project.name;
+            selector.appendChild(option);
+        });
+
+        // Set initial project if not set
+        if (!state.currentProjectId && data.projects.length > 0) {
+            // Prefer "General" project if exists, otherwise first one
+            const generalProject = data.projects.find(p => p.name === 'General');
+            state.currentProjectId = generalProject ? generalProject.project_id : data.projects[0].project_id;
+        }
+
+        if (state.currentProjectId) {
+            selector.value = state.currentProjectId;
+        }
+    } catch (error) {
+        console.error('Error loading projects:', error);
+        showToast('Failed to load projects', 'error');
+    }
+}
+
+async function handleProjectChange(event) {
+    state.currentProjectId = event.target.value;
+    await loadConversations();
+    startNewConversation();
+}
+
+function createNewProject() {
+    elements.projectModalTitle.textContent = 'Create New Project';
+    elements.projectIdInput.value = '';
+    elements.projectNameInput.value = '';
+    elements.projectDescInput.value = '';
+    elements.projectPromptInput.value = '';
+    elements.deleteProjectBtn.classList.add('hidden');
+
+    openProjectModal();
+}
+
+function openProjectModal() {
+    // If editing existing project (not creating new), populate fields
+    if (elements.projectModalTitle.textContent !== 'Create New Project') {
+        const project = state.projects.find(p => p.project_id === state.currentProjectId);
+        if (project) {
+            elements.projectModalTitle.textContent = 'Project Settings';
+            elements.projectIdInput.value = project.project_id;
+            elements.projectNameInput.value = project.name;
+            elements.projectDescInput.value = project.description || '';
+            elements.projectPromptInput.value = project.system_prompt || '';
+
+            // Show delete button only if not "General" project (optional safety)
+            if (project.name !== 'General') {
+                elements.deleteProjectBtn.classList.remove('hidden');
+            } else {
+                elements.deleteProjectBtn.classList.add('hidden');
+            }
+        }
+    }
+
+    elements.projectModal.classList.remove('hidden');
+    elements.projectModal.classList.add('flex');
+    setTimeout(() => {
+        elements.projectModalContent.classList.remove('scale-95', 'opacity-0');
+        elements.projectModalContent.classList.add('scale-100', 'opacity-100');
+    }, 10);
+}
+
+function closeProjectModal() {
+    elements.projectModalContent.classList.remove('scale-100', 'opacity-100');
+    elements.projectModalContent.classList.add('scale-95', 'opacity-0');
+    setTimeout(() => {
+        elements.projectModal.classList.add('hidden');
+        elements.projectModal.classList.remove('flex');
+        // Reset title for next time
+        elements.projectModalTitle.textContent = 'Project Settings';
+    }, 200);
+}
+
+async function saveProject() {
+    const id = elements.projectIdInput.value;
+    const name = elements.projectNameInput.value.trim();
+    const description = elements.projectDescInput.value.trim();
+    const system_prompt = elements.projectPromptInput.value.trim();
+
+    if (!name) {
+        showToast('Project name is required', 'error');
+        return;
+    }
+
+    const projectData = { name, description, system_prompt };
+
+    try {
+        let response;
+        if (id) {
+            response = await fetch(`/projects/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(projectData)
+            });
+        } else {
+            response = await fetch('/projects', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(projectData)
+            });
+        }
+
+        if (response.ok) {
+            const result = await response.json();
+            showToast('Project saved successfully!');
+            closeProjectModal();
+            await loadProjects();
+
+            // If created new project, switch to it
+            if (!id && result.id) {
+                state.currentProjectId = result.id;
+                elements.projectSelector.value = result.id;
+                handleProjectChange({ target: { value: result.id } });
+            } else if (id === state.currentProjectId) {
+                // If updated current project, reload to reflect changes (e.g. system prompt)
+                startNewConversation();
+            }
+        } else {
+            showToast('Failed to save project', 'error');
+        }
+    } catch (error) {
+        console.error('Error saving project:', error);
+        showToast('Failed to save project', 'error');
+    }
+}
+
+async function deleteProject() {
+    const id = elements.projectIdInput.value;
+    if (!id) return;
+
+    showModal('Delete Project', 'Are you sure? This will delete all conversations in this project.', 'confirm', async () => {
+        try {
+            const response = await fetch(`/projects/${id}`, { method: 'DELETE' });
+            if (response.ok) {
+                showToast('Project deleted successfully');
+                closeProjectModal();
+                state.currentProjectId = null; // Force reset
+                await loadProjects();
+                await loadConversations();
+                startNewConversation();
+            } else {
+                showToast('Failed to delete project', 'error');
+            }
+        } catch (error) {
+            console.error('Error deleting project:', error);
+            showToast('Failed to delete project', 'error');
+        }
+    });
+}
+
 async function loadConversations() {
     if (state.isLoading) return;
 
     try {
         state.isLoading = true;
-        const response = await fetch('/conversations');
+        const url = state.currentProjectId ? `/conversations?project_id=${state.currentProjectId}` : '/conversations';
+        const response = await fetch(url);
         const data = await response.json();
         const conversationsList = document.getElementById('conversations-list');
 
@@ -616,7 +801,20 @@ async function startNewConversation() {
     elements.fileInput.value = '';
     elements.filePreviewContainer.innerHTML = '';
     elements.filePreviewContainer.classList.add('hidden');
-    await updateSystemPrompt();
+    elements.filePreviewContainer.classList.add('hidden');
+
+    // Update system prompt based on project
+    if (state.currentProjectId) {
+        const project = state.projects.find(p => p.project_id === state.currentProjectId);
+        if (project && project.system_prompt) {
+            elements.systemPrompt.value = project.system_prompt;
+        } else {
+            await updateSystemPrompt();
+        }
+    } else {
+        await updateSystemPrompt();
+    }
+
     loadConversations(); // Update active state
 
     if (window.innerWidth < 640) {
@@ -906,10 +1104,18 @@ elements.chatForm.addEventListener('submit', async (e) => {
 
     try {
         if (!state.currentConversationId) {
-            const createResponse = await fetch('/create_conversation', { method: 'POST' });
-            const data = await createResponse.json();
+            const response = await fetch('/create_conversation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project_id: state.currentProjectId })
+            });
+            const data = await response.json();
             state.currentConversationId = data.conversation_id;
-            loadConversations();
+
+            // Update URL without reloading
+            const url = new URL(window.location);
+            url.searchParams.set('c', state.currentConversationId);
+            window.history.pushState({}, '', url);
         }
 
         appendUserMessage(message, null, files);

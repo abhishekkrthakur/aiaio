@@ -14,7 +14,8 @@ CREATE TABLE conversations (
     created_at REAL DEFAULT (strftime('%s.%f', 'now')),
     updated_at REAL DEFAULT (strftime('%s.%f', 'now')),
     last_updated REAL DEFAULT (strftime('%s.%f', 'now')),
-    summary TEXT
+    summary TEXT,
+    project_id TEXT REFERENCES projects(project_id)
 );
 
 CREATE TABLE messages (
@@ -73,6 +74,15 @@ CREATE TABLE system_prompts (
     created_at REAL DEFAULT (strftime('%s.%f', 'now')),
     updated_at REAL DEFAULT (strftime('%s.%f', 'now'))
 );
+
+CREATE TABLE projects (
+    project_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    system_prompt TEXT,
+    created_at REAL DEFAULT (strftime('%s.%f', 'now')),
+    updated_at REAL DEFAULT (strftime('%s.%f', 'now'))
+);
 """
 
 
@@ -116,7 +126,7 @@ class ChatDatabase:
                         """INSERT INTO providers
                            (name, is_default, temperature, max_tokens, top_p, host, api_key)
                            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                        ("Local", True, 1.0, 4096, 0.95, "http://localhost:8000/v1", ""),
+                        ("Custom", True, 1.0, 4096, 0.95, "http://localhost:8000/v1", ""),
                     )
                     local_id = cursor.lastrowid
                     conn.execute(
@@ -181,18 +191,57 @@ class ChatDatabase:
             else:
                 # Check if summary column exists
                 columns = conn.execute("PRAGMA table_info(conversations)").fetchall()
-                if "summary" not in [col[1] for col in columns]:
+                column_names = [col[1] for col in columns]
+                if "summary" not in column_names:
                     conn.execute("ALTER TABLE conversations ADD COLUMN summary TEXT")
+                
+                # Check if project_id column exists
+                if "project_id" not in column_names:
+                    conn.execute("ALTER TABLE conversations ADD COLUMN project_id TEXT REFERENCES projects(project_id)")
 
-    def create_conversation(self) -> str:
+            # Ensure default project exists
+            projects_count = conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
+            if projects_count == 0:
+                default_project_id = str(uuid.uuid4())
+                conn.execute(
+                    "INSERT INTO projects (project_id, name, description, system_prompt) VALUES (?, ?, ?, ?)",
+                    (default_project_id, "General", "Default project for general conversations", SYSTEM_PROMPTS["default"].strip())
+                )
+                
+                # Migrate existing conversations to default project
+                conn.execute(
+                    "UPDATE conversations SET project_id = ? WHERE project_id IS NULL",
+                    (default_project_id,)
+                )
+
+    def create_conversation(self, project_id: Optional[str] = None) -> str:
         """Create a new conversation.
+
+        Args:
+            project_id (str, optional): ID of the project the conversation belongs to.
 
         Returns:
             str: Unique identifier for the created conversation.
         """
         conversation_id = str(uuid.uuid4())
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("INSERT INTO conversations (conversation_id) VALUES (?)", (conversation_id,))
+            if project_id:
+                conn.execute(
+                    "INSERT INTO conversations (conversation_id, project_id) VALUES (?, ?)",
+                    (conversation_id, project_id)
+                )
+            else:
+                # Fallback to default project if none specified
+                # Find a default project or the first one
+                project = conn.execute("SELECT project_id FROM projects ORDER BY created_at ASC LIMIT 1").fetchone()
+                if project:
+                    conn.execute(
+                        "INSERT INTO conversations (conversation_id, project_id) VALUES (?, ?)",
+                        (conversation_id, project[0])
+                    )
+                else:
+                    # Should not happen due to init_db, but safe fallback
+                    conn.execute("INSERT INTO conversations (conversation_id) VALUES (?)", (conversation_id,))
         return conversation_id
 
     def add_message(
@@ -369,25 +418,115 @@ class ChatDatabase:
             conn.execute("DELETE FROM messages WHERE conversation_id = ?", (conversation_id,))
             conn.execute("DELETE FROM conversations WHERE conversation_id = ?", (conversation_id,))
 
-    def get_all_conversations(self) -> List[Dict]:
+    def get_all_conversations(self, project_id: Optional[str] = None) -> List[Dict]:
         """Retrieve all conversations with their message counts and last activity.
+
+        Args:
+            project_id (str, optional): Filter by project ID.
 
         Returns:
             List[Dict]: List of conversations with their metadata
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            conversations = conn.execute(
-                """SELECT c.*,
+            
+            query = """SELECT c.*,
                    COUNT(m.message_id) as message_count,
                    MAX(m.created_at) as last_message_at
                    FROM conversations c
-                   LEFT JOIN messages m ON c.conversation_id = m.conversation_id
-                   GROUP BY c.conversation_id
+                   LEFT JOIN messages m ON c.conversation_id = m.conversation_id"""
+            
+            params = []
+            if project_id:
+                query += " WHERE c.project_id = ?"
+                params.append(project_id)
+                
+            query += """ GROUP BY c.conversation_id
                    ORDER BY c.created_at ASC"""
-            ).fetchall()
+            
+            conversations = conn.execute(query, tuple(params)).fetchall()
 
         return [dict(conv) for conv in conversations]
+
+    def get_project_for_conversation(self, conversation_id: str) -> Optional[Dict]:
+        """Get the project associated with a conversation.
+
+        Args:
+            conversation_id (str): ID of the conversation
+
+        Returns:
+            Optional[Dict]: Project data if found, None otherwise
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            project = conn.execute(
+                """SELECT p.* FROM projects p
+                   JOIN conversations c ON p.project_id = c.project_id
+                   WHERE c.conversation_id = ?""",
+                (conversation_id,)
+            ).fetchone()
+            return dict(project) if project else None
+
+    # Project CRUD methods
+    def create_project(self, name: str, description: str = "", system_prompt: str = "") -> str:
+        """Create a new project.
+
+        Args:
+            name (str): Project name
+            description (str): Project description
+            system_prompt (str): Default system prompt for the project
+
+        Returns:
+            str: Project ID
+        """
+        project_id = str(uuid.uuid4())
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """INSERT INTO projects (project_id, name, description, system_prompt)
+                   VALUES (?, ?, ?, ?)""",
+                (project_id, name, description, system_prompt)
+            )
+        return project_id
+
+    def get_projects(self) -> List[Dict]:
+        """Get all projects."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            projects = conn.execute("SELECT * FROM projects ORDER BY created_at ASC").fetchall()
+            return [dict(p) for p in projects]
+
+    def get_project(self, project_id: str) -> Optional[Dict]:
+        """Get a project by ID."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            project = conn.execute("SELECT * FROM projects WHERE project_id = ?", (project_id,)).fetchone()
+            return dict(project) if project else None
+
+    def update_project(self, project_id: str, name: str, description: str, system_prompt: str) -> bool:
+        """Update a project."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                """UPDATE projects
+                   SET name = ?, description = ?, system_prompt = ?, updated_at = strftime('%s.%f', 'now')
+                   WHERE project_id = ?""",
+                (name, description, system_prompt, project_id)
+            )
+            return cursor.rowcount > 0
+
+    def delete_project(self, project_id: str) -> bool:
+        """Delete a project and its conversations."""
+        with sqlite3.connect(self.db_path) as conn:
+            # Delete messages for all conversations in project
+            conn.execute(
+                """DELETE FROM messages WHERE conversation_id IN 
+                   (SELECT conversation_id FROM conversations WHERE project_id = ?)""",
+                (project_id,)
+            )
+            # Delete conversations
+            conn.execute("DELETE FROM conversations WHERE project_id = ?", (project_id,))
+            # Delete project
+            cursor = conn.execute("DELETE FROM projects WHERE project_id = ?", (project_id,))
+            return cursor.rowcount > 0
 
     # Provider CRUD methods
     def get_default_provider(self) -> Optional[Dict]:
