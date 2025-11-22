@@ -491,17 +491,37 @@
                                     class="w-full accent-blue-600">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Max
-                                    Tokens</label>
-                                <input type="number" id="max-tokens"
-                                    class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                            </div>
-                            <div>
                                 <label class="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Top
-                                    P:
-                                    <span id="top-p-value">0.9</span></label>
+                                    P: <span id="top-p-value">0.9</span></label>
                                 <input type="range" id="top-p" min="0" max="1" step="0.05"
                                     class="w-full accent-blue-600">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Reasoning
+                                    Effort</label>
+                                <div class="relative">
+                                    <select id="reasoning-effort"
+                                        class="w-full p-2 pr-8 text-sm border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none appearance-none cursor-pointer">
+                                        <option value="none">None</option>
+                                        <option value="low">Low</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="high">High</option>
+                                    </select>
+                                    <div
+                                        class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-gray-500 dark:text-gray-400">
+                                        <i class="fa-solid fa-chevron-down text-xs"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Use for
+                                    Summarization</label>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="use-for-summarization" class="sr-only peer">
+                                    <div
+                                        class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600">
+                                    </div>
+                                </label>
                             </div>
                         </div>
 

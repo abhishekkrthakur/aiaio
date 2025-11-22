@@ -925,7 +925,6 @@ function createAssistantMessage(messageId, content = '') {
 
     const editBtn = messageDiv.querySelector('.edit-button');
     editBtn.onclick = () => openEditModal(messageDiv, messageId, content);
-
     elements.messagesContainer.appendChild(messageDiv);
     return messageDiv;
 }
@@ -1153,6 +1152,15 @@ elements.chatForm.addEventListener('submit', async (e) => {
             if (done) break;
 
             const chunk = decoder.decode(value);
+
+            // Check if chunk contains error marker
+            if (chunk.includes('__ERROR__:')) {
+                const errorMessage = chunk.split('__ERROR__:')[1];
+                showModal('API Error', errorMessage, 'error');
+                state.currentAssistantMessage = null;
+                break;
+            }
+
             responseText += chunk;
             updateAssistantMessage(responseText);
         }
@@ -1455,9 +1463,10 @@ function populateProviderForm(provider) {
     document.getElementById('api-key').value = provider.api_key;
     document.getElementById('temperature').value = provider.temperature;
     document.getElementById('temp-value').textContent = provider.temperature;
-    document.getElementById('max-tokens').value = provider.max_tokens;
     document.getElementById('top-p').value = provider.top_p;
     document.getElementById('top-p-value').textContent = provider.top_p;
+    document.getElementById('reasoning-effort').value = provider.reasoning_effort || 'none';
+    document.getElementById('use-for-summarization').checked = provider.use_for_summarization || false;
 }
 
 async function loadModels(providerId) {
@@ -1518,8 +1527,9 @@ async function createNewSettingsConfig() {
             name: name,
             host: host,
             temperature: 1.0,
-            max_tokens: 4096,
             top_p: 0.95,
+            reasoning_effort: 'none',
+            use_for_summarization: false,
             api_key: ''
         };
 
@@ -1571,8 +1581,9 @@ async function saveSettings() {
         host: document.getElementById('api-host').value,
         api_key: document.getElementById('api-key').value,
         temperature: parseFloat(document.getElementById('temperature').value),
-        max_tokens: parseInt(document.getElementById('max-tokens').value),
-        top_p: parseFloat(document.getElementById('top-p').value)
+        top_p: parseFloat(document.getElementById('top-p').value),
+        reasoning_effort: document.getElementById('reasoning-effort').value,
+        use_for_summarization: document.getElementById('use-for-summarization').checked
     };
 
     const providerId = elements.settingsSelector.value;
@@ -1584,6 +1595,11 @@ async function saveSettings() {
             body: JSON.stringify(provider)
         });
         showToast('Provider settings saved!');
+
+        // Reload provider data to reflect changes
+        const response = await fetch(`/providers/${providerId}`);
+        const updatedProvider = await response.json();
+        populateProviderForm(updatedProvider);
     } catch (error) {
         console.error('Error saving provider:', error);
         showToast('Failed to save settings', 'error');

@@ -140,17 +140,18 @@ class ProviderInput(BaseModel):
     Attributes:
         name (str): Name of the provider
         temperature (float): Controls randomness in responses
-        max_tokens (int): Maximum length of generated responses
         top_p (float): Controls diversity via nucleus sampling
+        reasoning_effort (str): Reasoning effort level (none, low, medium, high)
+        use_for_summarization (bool): Whether to use this provider for summarization
         host (str): API endpoint URL
         api_key (str): Authentication key for the API
-        is_multimodal (bool): Whether the provider supports file uploads
     """
 
     name: str
     temperature: Optional[float] = 1.0
-    max_tokens: Optional[int] = 4096
     top_p: Optional[float] = 0.95
+    reasoning_effort: Optional[str] = "none"
+    use_for_summarization: Optional[bool] = False
     host: str
     api_key: Optional[str] = ""
 
@@ -276,14 +277,21 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
     stream = None
     try:
         manager.set_generating(client_id, True)
-        stream = client.chat.completions.create(
-            messages=formatted_messages,
-            model=default_model["model_name"],
-            max_completion_tokens=provider["max_tokens"],
-            temperature=provider["temperature"],
-            top_p=provider["top_p"],
-            stream=True,
-        )
+
+        # Prepare API call parameters
+        api_params = {
+            "messages": formatted_messages,
+            "model": default_model["model_name"],
+            "temperature": provider["temperature"],
+            "top_p": provider["top_p"],
+            "stream": True,
+        }
+
+        # Add reasoning_effort only if not 'none'
+        if provider.get("reasoning_effort") and provider["reasoning_effort"] != "none":
+            api_params["reasoning_effort"] = provider["reasoning_effort"]
+
+        stream = client.chat.completions.create(**api_params)
 
         for message in stream:
             if manager.should_stop(client_id):
@@ -291,11 +299,15 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
                 break
 
             if message.choices and len(message.choices) > 0:
+                # Handle regular content
                 if message.choices[0].delta.content is not None:
                     yield message.choices[0].delta.content
 
     except Exception as e:
         logger.error(f"Error in text_streamer: {e}")
+        # Yield error message with special marker so frontend can display it
+        error_message = f"__ERROR__:{str(e)}"
+        yield error_message
         raise
 
     finally:
@@ -711,9 +723,7 @@ async def create_project(project: ProjectInput):
     """Create a new project."""
     try:
         project_id = db.create_project(
-            name=project.name,
-            description=project.description,
-            system_prompt=project.system_prompt
+            name=project.name, description=project.description, system_prompt=project.system_prompt
         )
         return {"status": "success", "id": project_id}
     except Exception as e:
@@ -728,7 +738,7 @@ async def update_project(project_id: str, project: ProjectInput):
             project_id=project_id,
             name=project.name,
             description=project.description,
-            system_prompt=project.system_prompt
+            system_prompt=project.system_prompt,
         )
         if not success:
             raise HTTPException(status_code=404, detail="Project not found")
@@ -952,20 +962,37 @@ async def chat(
                 # Generate and store summary after assistant's response but only if its the first user message
                 if len(history) == 2 and history[1]["role"] == "user":
                     try:
-                        all_user_messages = [m["content"] for m in history if m["role"] == "user"]
-                        summary_messages = [
-                            {"role": "system", "content": SUMMARY_PROMPT},
-                            {"role": "user", "content": str(all_user_messages)},
-                        ]
-                        summary = ""
-                        logger.info(summary_messages)
-                        async for chunk in text_streamer(summary_messages, client_id):
-                            summary += chunk
-                        db.update_conversation_summary(conversation_id, summary.strip())
+                        # Get the default provider to check use_for_summarization setting
+                        provider = db.get_default_provider()
+
+                        if provider and provider.get("use_for_summarization", False):
+                            # Use model to generate summary
+                            all_user_messages = [m["content"] for m in history if m["role"] == "user"]
+                            summary_messages = [
+                                {"role": "system", "content": SUMMARY_PROMPT},
+                                {"role": "user", "content": str(all_user_messages)},
+                            ]
+                            summary = ""
+                            logger.info(summary_messages)
+                            async for chunk in text_streamer(summary_messages, client_id):
+                                summary += chunk
+                            db.update_conversation_summary(conversation_id, summary.strip())
+                        else:
+                            # Use first few words of user message as summary
+                            user_message = history[1]["content"]
+                            # Get first 50 characters or until first newline
+                            summary = user_message.split("\n")[0][:50]
+                            if len(user_message.split("\n")[0]) > 50:
+                                summary += "..."
+                            db.update_conversation_summary(conversation_id, summary)
 
                         # After summary update
                         await manager.broadcast(
-                            {"type": "summary_updated", "conversation_id": conversation_id, "summary": summary.strip()}
+                            {
+                                "type": "summary_updated",
+                                "conversation_id": conversation_id,
+                                "summary": summary if isinstance(summary, str) else summary.strip(),
+                            }
                         )
                     except Exception as e:
                         logger.error(f"Failed to generate summary: {e}")

@@ -46,8 +46,9 @@ CREATE TABLE providers (
     name TEXT NOT NULL UNIQUE,
     is_default BOOLEAN NOT NULL DEFAULT false,
     temperature REAL DEFAULT 1.0,
-    max_tokens INTEGER DEFAULT 4096,
     top_p REAL DEFAULT 0.95,
+    reasoning_effort TEXT DEFAULT 'none',
+    use_for_summarization BOOLEAN DEFAULT false,
     host TEXT NOT NULL,
     api_key TEXT DEFAULT '',
     created_at REAL DEFAULT (strftime('%s.%f', 'now')),
@@ -121,60 +122,76 @@ class ChatDatabase:
                 # Insert default providers and models
                 providers_count = conn.execute("SELECT COUNT(*) FROM providers").fetchone()[0]
                 if providers_count == 0:
-                    # Local provider
+                    # Custom provider
                     cursor = conn.execute(
                         """INSERT INTO providers
-                           (name, is_default, temperature, max_tokens, top_p, host, api_key)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                        ("Custom", True, 1.0, 4096, 0.95, "http://localhost:8000/v1", ""),
+                           (name, is_default, temperature, top_p, reasoning_effort, use_for_summarization, host, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        ("Custom", True, 1.0, 0.95, "none", True, "http://localhost:8000/v1", ""),
                     )
-                    local_id = cursor.lastrowid
+                    custom_id = cursor.lastrowid
                     conn.execute(
                         "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
-                        (local_id, "meta-llama/Llama-3.2-1B-Instruct", True, False),
-                    )
-
-                    # OpenAI provider
-                    cursor = conn.execute(
-                        """INSERT INTO providers
-                           (name, is_default, temperature, max_tokens, top_p, host, api_key)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                        ("OpenAI", False, 1.0, 4096, 0.95, "https://api.openai.com/v1", ""),
-                    )
-                    openai_id = cursor.lastrowid
-                    conn.execute(
-                        "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
-                        (openai_id, "gpt-4o", True, True),
-                    )
-                    conn.execute(
-                        "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
-                        (openai_id, "gpt-4o-mini", False, True),
-                    )
-
-                    # Anthropic provider
-                    cursor = conn.execute(
-                        """INSERT INTO providers
-                           (name, is_default, temperature, max_tokens, top_p, host, api_key)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                        ("Anthropic", False, 1.0, 4096, 0.95, "https://api.anthropic.com/v1", ""),
-                    )
-                    anthropic_id = cursor.lastrowid
-                    conn.execute(
-                        "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
-                        (anthropic_id, "claude-3-5-sonnet-latest", True, True),
+                        (custom_id, "meta-llama/Llama-3.2-1B-Instruct", True, False),
                     )
 
                     # Google provider
                     cursor = conn.execute(
                         """INSERT INTO providers
-                           (name, is_default, temperature, max_tokens, top_p, host, api_key)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                        ("Google", False, 1.0, 4096, 0.95, "https://generativelanguage.googleapis.com/v1beta", ""),
+                           (name, is_default, temperature, top_p, reasoning_effort, use_for_summarization, host, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            "Google",
+                            False,
+                            1.0,
+                            0.95,
+                            "low",
+                            False,
+                            "https://generativelanguage.googleapis.com/v1beta",
+                            "",
+                        ),
                     )
                     google_id = cursor.lastrowid
                     conn.execute(
                         "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
-                        (google_id, "gemini-2.0-flash-001", True, True),
+                        (google_id, "gemini-3-pro-preview", True, True),
+                    )
+                    conn.execute(
+                        "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
+                        (google_id, "gemini-2.5-pro", False, True),
+                    )
+                    conn.execute(
+                        "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
+                        (google_id, "gemini-2.5-flash", False, True),
+                    )
+                    conn.execute(
+                        "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
+                        (google_id, "gemini-2.5-flash-lite", False, True),
+                    )
+
+                    # OpenAI provider
+                    cursor = conn.execute(
+                        """INSERT INTO providers
+                           (name, is_default, temperature, top_p, reasoning_effort, use_for_summarization, host, api_key)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        ("OpenAI", False, 1.0, 0.95, "low", False, "https://api.openai.com/v1", ""),
+                    )
+                    openai_id = cursor.lastrowid
+                    conn.execute(
+                        "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
+                        (openai_id, "gpt-5.1-2025-11-13", True, True),
+                    )
+                    conn.execute(
+                        "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
+                        (openai_id, "gpt-5-mini-2025-08-07", False, True),
+                    )
+                    conn.execute(
+                        "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
+                        (openai_id, "gpt-5-nano-2025-08-07", False, True),
+                    )
+                    conn.execute(
+                        "INSERT INTO models (provider_id, model_name, is_default, is_multimodal) VALUES (?, ?, ?, ?)",
+                        (openai_id, "gpt-oss-120b", False, False),
                     )
 
                 # Insert system prompts
@@ -194,10 +211,12 @@ class ChatDatabase:
                 column_names = [col[1] for col in columns]
                 if "summary" not in column_names:
                     conn.execute("ALTER TABLE conversations ADD COLUMN summary TEXT")
-                
+
                 # Check if project_id column exists
                 if "project_id" not in column_names:
-                    conn.execute("ALTER TABLE conversations ADD COLUMN project_id TEXT REFERENCES projects(project_id)")
+                    conn.execute(
+                        "ALTER TABLE conversations ADD COLUMN project_id TEXT REFERENCES projects(project_id)"
+                    )
 
             # Ensure default project exists
             projects_count = conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
@@ -205,14 +224,16 @@ class ChatDatabase:
                 default_project_id = str(uuid.uuid4())
                 conn.execute(
                     "INSERT INTO projects (project_id, name, description, system_prompt) VALUES (?, ?, ?, ?)",
-                    (default_project_id, "General", "Default project for general conversations", SYSTEM_PROMPTS["default"].strip())
+                    (
+                        default_project_id,
+                        "General",
+                        "Default project for general conversations",
+                        SYSTEM_PROMPTS["default"].strip(),
+                    ),
                 )
-                
+
                 # Migrate existing conversations to default project
-                conn.execute(
-                    "UPDATE conversations SET project_id = ? WHERE project_id IS NULL",
-                    (default_project_id,)
-                )
+                conn.execute("UPDATE conversations SET project_id = ? WHERE project_id IS NULL", (default_project_id,))
 
     def create_conversation(self, project_id: Optional[str] = None) -> str:
         """Create a new conversation.
@@ -228,7 +249,7 @@ class ChatDatabase:
             if project_id:
                 conn.execute(
                     "INSERT INTO conversations (conversation_id, project_id) VALUES (?, ?)",
-                    (conversation_id, project_id)
+                    (conversation_id, project_id),
                 )
             else:
                 # Fallback to default project if none specified
@@ -237,7 +258,7 @@ class ChatDatabase:
                 if project:
                     conn.execute(
                         "INSERT INTO conversations (conversation_id, project_id) VALUES (?, ?)",
-                        (conversation_id, project[0])
+                        (conversation_id, project[0]),
                     )
                 else:
                     # Should not happen due to init_db, but safe fallback
@@ -429,21 +450,21 @@ class ChatDatabase:
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            
+
             query = """SELECT c.*,
                    COUNT(m.message_id) as message_count,
                    MAX(m.created_at) as last_message_at
                    FROM conversations c
                    LEFT JOIN messages m ON c.conversation_id = m.conversation_id"""
-            
+
             params = []
             if project_id:
                 query += " WHERE c.project_id = ?"
                 params.append(project_id)
-                
+
             query += """ GROUP BY c.conversation_id
                    ORDER BY c.created_at ASC"""
-            
+
             conversations = conn.execute(query, tuple(params)).fetchall()
 
         return [dict(conv) for conv in conversations]
@@ -463,7 +484,7 @@ class ChatDatabase:
                 """SELECT p.* FROM projects p
                    JOIN conversations c ON p.project_id = c.project_id
                    WHERE c.conversation_id = ?""",
-                (conversation_id,)
+                (conversation_id,),
             ).fetchone()
             return dict(project) if project else None
 
@@ -484,7 +505,7 @@ class ChatDatabase:
             conn.execute(
                 """INSERT INTO projects (project_id, name, description, system_prompt)
                    VALUES (?, ?, ?, ?)""",
-                (project_id, name, description, system_prompt)
+                (project_id, name, description, system_prompt),
             )
         return project_id
 
@@ -509,7 +530,7 @@ class ChatDatabase:
                 """UPDATE projects
                    SET name = ?, description = ?, system_prompt = ?, updated_at = strftime('%s.%f', 'now')
                    WHERE project_id = ?""",
-                (name, description, system_prompt, project_id)
+                (name, description, system_prompt, project_id),
             )
             return cursor.rowcount > 0
 
@@ -520,7 +541,7 @@ class ChatDatabase:
             conn.execute(
                 """DELETE FROM messages WHERE conversation_id IN 
                    (SELECT conversation_id FROM conversations WHERE project_id = ?)""",
-                (project_id,)
+                (project_id,),
             )
             # Delete conversations
             conn.execute("DELETE FROM conversations WHERE project_id = ?", (project_id,))
@@ -555,13 +576,14 @@ class ChatDatabase:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 """INSERT INTO providers
-                   (name, temperature, max_tokens, top_p, host, api_key)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
+                   (name, temperature, top_p, reasoning_effort, use_for_summarization, host, api_key)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
                     provider.get("name"),
                     provider.get("temperature", 1.0),
-                    provider.get("max_tokens", 4096),
                     provider.get("top_p", 0.95),
+                    provider.get("reasoning_effort", "none"),
+                    provider.get("use_for_summarization", False),
                     provider.get("host"),
                     provider.get("api_key", ""),
                 ),
@@ -573,14 +595,15 @@ class ChatDatabase:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 """UPDATE providers
-                   SET name = ?, temperature = ?, max_tokens = ?, top_p = ?,
+                   SET name = ?, temperature = ?, top_p = ?, reasoning_effort = ?, use_for_summarization = ?,
                        host = ?, api_key = ?, updated_at = strftime('%s.%f', 'now')
                    WHERE id = ?""",
                 (
                     provider.get("name"),
                     provider.get("temperature", 1.0),
-                    provider.get("max_tokens", 4096),
                     provider.get("top_p", 0.95),
+                    provider.get("reasoning_effort", "none"),
+                    provider.get("use_for_summarization", False),
                     provider.get("host"),
                     provider.get("api_key", ""),
                     provider_id,
