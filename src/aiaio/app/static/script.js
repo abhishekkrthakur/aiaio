@@ -337,17 +337,23 @@ async function loadConversations() {
             const activeClass = isActive ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50 border-transparent';
 
             return `
-                <div class="group w-full p-3 rounded-xl border transition-all duration-200 cursor-pointer mb-2 relative ${activeClass}" 
+                <div class="group w-full p-2.5 rounded-xl border transition-all duration-200 cursor-pointer mb-2 relative ${activeClass}" 
                      onclick="loadConversation('${conv.conversation_id}')"
                      data-conversation-id="${conv.conversation_id}">
                     <div class="flex flex-col gap-1">
-                        <div class="flex items-center justify-between">
+                        <div class="flex items-center justify-between gap-1">
                             <div class="text-sm font-medium text-gray-700 dark:text-gray-200 truncate flex-1 summary-text">
                                 ${conv.summary || 'New Conversation'}
                             </div>
                             <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                <button onclick="editConversationTitle('${conv.conversation_id}', event)"
+                                        class="p-1 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
+                                        title="Edit title">
+                                    <i class="fa-solid fa-pen text-xs"></i>
+                                </button>
                                 <button onclick="deleteConversation('${conv.conversation_id}', event)"
-                                        class="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                                        class="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                                        title="Delete">
                                     <i class="fa-solid fa-trash text-xs"></i>
                                 </button>
                             </div>
@@ -382,6 +388,29 @@ async function deleteConversation(conversationId, event) {
             showModal('Error', 'Failed to delete conversation', 'error');
         }
     });
+}
+
+async function editConversationTitle(conversationId, event) {
+    event.stopPropagation();
+
+    const conversationElement = document.querySelector(`[data-conversation-id="${conversationId}"]`);
+    const summaryElement = conversationElement?.querySelector('.summary-text');
+    const currentTitle = summaryElement?.textContent.trim() || 'New Conversation';
+
+    const newTitle = prompt('Enter new title:', currentTitle);
+    if (!newTitle || newTitle === currentTitle) return;
+
+    try {
+        await fetch(`/conversations/${conversationId}/title`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: newTitle })
+        });
+        // WebSocket will handle the UI update
+    } catch (error) {
+        console.error('Error updating conversation title:', error);
+        showModal('Error', 'Failed to update conversation title', 'error');
+    }
 }
 
 async function loadConversation(conversationId) {
@@ -524,7 +553,7 @@ function createAssistantMessage(messageId, content = '') {
             <div class="flex-1 min-w-0">
                 <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl rounded-tl-sm px-5 py-4 shadow-sm relative mb-2">
                     <div class="message-content prose prose-slate dark:prose-invert max-w-none text-sm sm:text-base leading-relaxed break-words">
-                        ${content}
+                        ${content || '<div class="typing-indicator flex gap-1 py-2"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>'}
                     </div>
                     <div class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white dark:bg-gray-800 rounded-lg p-1 shadow-sm border border-gray-100 dark:border-gray-700">
                         <button class="regenerate-button p-1.5 text-gray-400 hover:text-blue-500 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Regenerate">

@@ -145,6 +145,7 @@ class SettingsInput(BaseModel):
         host (str): API endpoint URL
         model_name (str): Name of the AI model to use
         api_key (str): Authentication key for the API
+        is_multimodal (bool): Whether the model supports file uploads
     """
 
     name: str
@@ -154,6 +155,7 @@ class SettingsInput(BaseModel):
     host: Optional[str] = "http://localhost:8000/v1"
     model_name: Optional[str] = "meta-llama/Llama-3.2-1B-Instruct"
     api_key: Optional[str] = ""
+    is_multimodal: Optional[bool] = False
 
 
 class PromptInput(BaseModel):
@@ -478,6 +480,34 @@ async def delete_conversation(conversation_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class ConversationTitleUpdate(BaseModel):
+    """Model for updating conversation title."""
+    title: str
+
+
+@app.put("/conversations/{conversation_id}/title")
+async def update_conversation_title(conversation_id: str, update: ConversationTitleUpdate):
+    """
+    Update a conversation's title/summary.
+
+    Args:
+        conversation_id (str): ID of conversation to update
+        update (ConversationTitleUpdate): New title
+
+    Returns:
+        dict: Operation status
+
+    Raises:
+        HTTPException: If update fails
+    """
+    try:
+        db.update_conversation_summary(conversation_id, update.title)
+        await manager.broadcast({"type": "summary_updated", "conversation_id": conversation_id, "summary": update.title})
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/save_settings")
 async def save_settings(settings: SettingsInput):
     """Save AI model settings.
@@ -647,6 +677,7 @@ async def get_default_values():
         "host": "http://localhost:8000/v1",
         "model_name": "meta-llama/Llama-3.2-1B-Instruct",
         "api_key": "",
+        "is_multimodal": False,
     }
 
 

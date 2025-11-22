@@ -50,6 +50,7 @@ CREATE TABLE settings (
     host TEXT DEFAULT 'http://localhost:8000/v1',
     model_name TEXT DEFAULT 'meta-llama/Llama-3.2-1B-Instruct',
     api_key TEXT DEFAULT '',
+    is_multimodal BOOLEAN DEFAULT false,
     created_at REAL DEFAULT (strftime('%s.%f', 'now')),
     updated_at REAL DEFAULT (strftime('%s.%f', 'now'))
 );
@@ -312,6 +313,11 @@ class ChatDatabase:
                         conn.execute(
                             f"ALTER TABLE {table} ADD COLUMN updated_at REAL DEFAULT (strftime('%s.%f', 'now'))"
                         )
+
+                # Check if is_multimodal column exists in settings table
+                columns = conn.execute("PRAGMA table_info(settings)").fetchall()
+                if "is_multimodal" not in [col[1] for col in columns]:
+                    conn.execute("ALTER TABLE settings ADD COLUMN is_multimodal BOOLEAN DEFAULT false")
 
     def create_conversation(self) -> str:
         """Create a new conversation.

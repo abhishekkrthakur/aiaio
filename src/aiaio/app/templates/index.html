@@ -110,6 +110,51 @@
         .message-bubble {
             animation: fadeIn 0.3s ease-out;
         }
+
+        /* Typing Indicator Animation */
+        .typing-indicator {
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .typing-indicator .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #9ca3af;
+            animation: typing 1.4s infinite;
+        }
+
+        .dark .typing-indicator .dot {
+            background-color: #6b7280;
+        }
+
+        .typing-indicator .dot:nth-child(1) {
+            animation-delay: 0s;
+        }
+
+        .typing-indicator .dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-indicator .dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+
+            0%,
+            60%,
+            100% {
+                transform: translateY(0);
+                opacity: 0.7;
+            }
+
+            30% {
+                transform: translateY(-10px);
+                opacity: 1;
+            }
+        }
     </style>
 </head>
 
@@ -119,7 +164,7 @@
     <div class="flex h-full">
         <!-- Sidebar (Left) -->
         <aside id="sidebar"
-            class="w-80 flex-shrink-0 flex flex-col border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 transition-all duration-300 transform -translate-x-full sm:translate-x-0 absolute sm:relative z-30 h-full">
+            class="w-64 flex-shrink-0 flex flex-col border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 transition-all duration-300 transform -translate-x-full sm:translate-x-0 absolute sm:relative z-30 h-full">
             <!-- Header -->
             <div class="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
                 <div class="flex items-center gap-3">
