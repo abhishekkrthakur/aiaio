@@ -40,7 +40,11 @@ const elements = {
 
     settingsSelector: document.getElementById('settings-selector'),
     saveSettingsButton: document.getElementById('save-settings'),
-    setDefaultSettingsButton: document.getElementById('set-default-settings')
+
+    // Top Bar Info
+    infoProvider: document.getElementById('info-provider'),
+    infoModel: document.getElementById('info-model'),
+    infoHost: document.getElementById('info-host')
 };
 
 // Initialize app
@@ -64,6 +68,7 @@ function initializeCore() {
     initializeSettings();
     loadVersion();
     loadPrompts();
+    updateTopBarInfo();
 }
 
 function initializeEventListeners() {
@@ -75,7 +80,6 @@ function initializeEventListeners() {
     // Settings listeners
     elements.settingsSelector?.addEventListener('change', handleSettingsChange);
     elements.saveSettingsButton?.addEventListener('click', saveSettings);
-    elements.setDefaultSettingsButton?.addEventListener('click', setDefaultSettings);
 
     // Slider listeners
     document.getElementById('temperature')?.addEventListener('input', (e) => {
@@ -355,7 +359,7 @@ function scrollToBottom() {
         top: elements.chatMessages.scrollHeight,
         behavior: 'smooth'
     });
-    state.isScrolledManually = false;
+    // state.isScrolledManually is handled by scroll event
     elements.jumpToBottomButton.classList.remove('opacity-100', 'translate-y-0');
     elements.jumpToBottomButton.classList.add('opacity-0', 'translate-y-4');
 }
@@ -698,10 +702,7 @@ function createAssistantMessage(messageId, content = '') {
     if (messageId) messageDiv.dataset.messageId = messageId;
 
     messageDiv.innerHTML = `
-        <div class="flex gap-3 max-w-full w-full">
-            <div class="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-md mt-1">
-                <i class="fa-solid fa-robot text-white text-xs"></i>
-            </div>
+        <div class="flex max-w-full w-full">
             <div class="flex-1 min-w-0">
                 <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl rounded-tl-sm px-5 py-4 shadow-sm relative mb-2">
                     <div class="message-content prose prose-slate dark:prose-invert max-w-none text-sm sm:text-base leading-relaxed break-words">
@@ -1062,6 +1063,8 @@ async function handlePromptChange(e) {
         const response = await fetch(`/prompts/${promptId}`);
         const data = await response.json();
         elements.systemPrompt.value = data.content;
+
+        showToast('Prompt activated!');
     } catch (error) {
         console.error('Error changing prompt:', error);
     }
@@ -1204,6 +1207,29 @@ async function initializeSettings() {
     }
 }
 
+async function updateTopBarInfo() {
+    try {
+        // Get default provider
+        const providerResponse = await fetch('/default_provider');
+        const provider = await providerResponse.json();
+
+        if (elements.infoProvider) elements.infoProvider.textContent = provider.name;
+        if (elements.infoHost) elements.infoHost.textContent = new URL(provider.host).hostname;
+
+        // Get default model for this provider
+        const modelsResponse = await fetch(`/providers/${provider.id}/models`);
+        const modelsData = await modelsResponse.json();
+        const defaultModel = modelsData.models.find(m => m.is_default) || modelsData.models[0];
+
+        if (elements.infoModel) {
+            elements.infoModel.textContent = defaultModel ? defaultModel.model_name : 'No model';
+        }
+    } catch (error) {
+        console.error('Error updating top bar info:', error);
+        if (elements.infoProvider) elements.infoProvider.textContent = 'Error';
+    }
+}
+
 function populateProviderForm(provider) {
     document.getElementById('api-host').value = provider.host;
     document.getElementById('api-key').value = provider.api_key;
@@ -1313,7 +1339,7 @@ async function handleSettingsChange(e) {
         await loadModels(providerId);
 
         // Auto-activate the selected provider
-        await setDefaultSettings(true);
+        await setDefaultSettings(false);
     } catch (error) {
         console.error('Error loading provider:', error);
     }
@@ -1357,6 +1383,7 @@ async function setDefaultSettings(silent = false) {
             showToast('Failed to set default provider', 'error');
         }
     }
+    await updateTopBarInfo();
 }
 
 async function addModel() {
@@ -1420,6 +1447,7 @@ async function setDefaultModel(modelId) {
         console.error('Error setting default model:', error);
         showToast('Failed to set default model', 'error');
     }
+    await updateTopBarInfo();
 }
 
 function loadVersion() {

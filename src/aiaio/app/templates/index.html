@@ -102,8 +102,18 @@
 
         /* Markdown Styles */
         .prose pre {
-            margin: 0;
+            margin-top: 1rem;
+            margin-bottom: 1rem;
             border-radius: 0.5rem;
+            overflow-x: auto;
+        }
+
+        .prose p {
+            margin-bottom: 0.5rem;
+        }
+
+        .prose p:last-child {
+            margin-bottom: 0;
         }
 
         /* Message Bubbles */
@@ -280,10 +290,31 @@
                 <div class="w-6"></div> <!-- Spacer -->
             </div>
 
-            <!-- Top Bar (Empty - System Prompt moved to settings) -->
+            <!-- Top Bar -->
+            <div
+                class="w-full flex items-center justify-end px-4 py-2 border-b border-gray-200 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm z-10">
+                <div id="model-info-display"
+                    class="flex items-center gap-3 text-xs font-medium text-gray-600 dark:text-gray-300 transition-all duration-300">
+                    <!-- Info injected by JS -->
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-server text-blue-500"></i>
+                        <span id="info-provider" class="font-semibold">Loading...</span>
+                    </div>
+                    <div class="w-px h-3 bg-gray-300 dark:bg-gray-700"></div>
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-microchip text-purple-500"></i>
+                        <span id="info-model">...</span>
+                    </div>
+                    <div class="w-px h-3 bg-gray-300 dark:bg-gray-700"></div>
+                    <div class="flex items-center gap-2 text-gray-400">
+                        <i class="fa-solid fa-network-wired"></i>
+                        <span id="info-host" class="max-w-[150px] truncate">...</span>
+                    </div>
+                </div>
+            </div>
 
             <!-- Chat Area -->
-            <div id="chat-messages" class="flex-1 overflow-y-auto scroll-smooth pt-16 pb-48 px-3">
+            <div id="chat-messages" class="flex-1 overflow-y-auto scroll-smooth pt-4 pb-32 px-3">
                 <div class="max-w-3xl mx-auto space-y-4" id="messages-container">
                     <!-- Messages will be injected here -->
                 </div>
@@ -434,12 +465,10 @@
                             </div>
                         </div>
 
-                        <div class="pt-4 border-t border-gray-200 dark:border-gray-800 flex gap-2">
+                        <div class="pt-4 border-t border-gray-200 dark:border-gray-800">
                             <button id="save-settings"
-                                class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-lg shadow-blue-600/20 transition-colors">Save</button>
-                            <button id="set-default-settings"
-                                class="flex-1 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg transition-colors">Set
-                                Default</button>
+                                class="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-lg shadow-blue-600/20 transition-colors">Save
+                                Changes</button>
                         </div>
                     </div>
 
