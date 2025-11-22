@@ -40,19 +40,29 @@ CREATE TABLE attachments (
     FOREIGN KEY (message_id) REFERENCES messages(message_id)
 );
 
-CREATE TABLE settings (
+CREATE TABLE providers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    "default" BOOLEAN NOT NULL DEFAULT false,
+    name TEXT NOT NULL UNIQUE,
+    is_default BOOLEAN NOT NULL DEFAULT false,
     temperature REAL DEFAULT 1.0,
     max_tokens INTEGER DEFAULT 4096,
     top_p REAL DEFAULT 0.95,
-    host TEXT DEFAULT 'http://localhost:8000/v1',
-    model_name TEXT DEFAULT 'meta-llama/Llama-3.2-1B-Instruct',
+    host TEXT NOT NULL,
     api_key TEXT DEFAULT '',
     is_multimodal BOOLEAN DEFAULT false,
     created_at REAL DEFAULT (strftime('%s.%f', 'now')),
     updated_at REAL DEFAULT (strftime('%s.%f', 'now'))
+);
+
+CREATE TABLE models (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider_id INTEGER NOT NULL,
+    model_name TEXT NOT NULL,
+    is_default BOOLEAN DEFAULT false,
+    created_at REAL DEFAULT (strftime('%s.%f', 'now')),
+    updated_at REAL DEFAULT (strftime('%s.%f', 'now')),
+    FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE,
+    UNIQUE(provider_id, model_name)
 );
 
 CREATE TABLE system_prompts (
@@ -98,158 +108,63 @@ class ChatDatabase:
                 # Execute schema
                 conn.executescript(_DB)
 
-                # Insert default settings only if no settings exist
-                settings_count = conn.execute("SELECT COUNT(*) FROM settings").fetchone()[0]
-                if settings_count == 0:
-                    conn.execute(
-                        """INSERT INTO settings
-                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
+                # Insert default providers and models
+                providers_count = conn.execute("SELECT COUNT(*) FROM providers").fetchone()[0]
+                if providers_count == 0:
+                    # Local provider
+                    cursor = conn.execute(
+                        """INSERT INTO providers
+                           (name, is_default, temperature, max_tokens, top_p, host, api_key, is_multimodal)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            "default",
-                            True,
-                            1.0,
-                            4096,
-                            0.95,
-                            "http://localhost:8000/v1",
-                            "meta-llama/Llama-3.2-1B-Instruct",
-                            "",
-                        ),
+                        ("Local", True, 1.0, 4096, 0.95, "http://localhost:8000/v1", "", False),
+                    )
+                    local_id = cursor.lastrowid
+                    conn.execute(
+                        "INSERT INTO models (provider_id, model_name, is_default) VALUES (?, ?, ?)",
+                        (local_id, "meta-llama/Llama-3.2-1B-Instruct", True),
+                    )
+
+                    # OpenAI provider
+                    cursor = conn.execute(
+                        """INSERT INTO providers
+                           (name, is_default, temperature, max_tokens, top_p, host, api_key, is_multimodal)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        ("OpenAI", False, 1.0, 4096, 0.95, "https://api.openai.com/v1", "", True),
+                    )
+                    openai_id = cursor.lastrowid
+                    conn.execute(
+                        "INSERT INTO models (provider_id, model_name, is_default) VALUES (?, ?, ?)",
+                        (openai_id, "gpt-4o", True),
                     )
                     conn.execute(
-                        """INSERT INTO settings
-                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            "HF: SambaNova",
-                            False,
-                            1.0,
-                            4096,
-                            0.95,
-                            "https://router.huggingface.co/sambanova",
-                            "meta-llama/Llama-3.2-1B-Instruct",
-                            "",
-                        ),
+                        "INSERT INTO models (provider_id, model_name, is_default) VALUES (?, ?, ?)",
+                        (openai_id, "gpt-4o-mini", False),
                     )
-                    conn.execute(
-                        """INSERT INTO settings
-                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
+
+                    # Anthropic provider
+                    cursor = conn.execute(
+                        """INSERT INTO providers
+                           (name, is_default, temperature, max_tokens, top_p, host, api_key, is_multimodal)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            "HF: Inference API",
-                            False,
-                            1.0,
-                            4096,
-                            0.95,
-                            "https://router.huggingface.co/hf-inference/v1",
-                            "meta-llama/Llama-3.2-1B-Instruct",
-                            "",
-                        ),
+                        ("Anthropic", False, 1.0, 4096, 0.95, "https://api.anthropic.com/v1", "", True),
                     )
+                    anthropic_id = cursor.lastrowid
                     conn.execute(
-                        """INSERT INTO settings
-                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            "OpenAI",
-                            False,
-                            1.0,
-                            4096,
-                            0.95,
-                            "https://router.huggingface.co/hf-inference/v2",
-                            "o3-mini-2025-01-31",
-                            "",
-                        ),
+                        "INSERT INTO models (provider_id, model_name, is_default) VALUES (?, ?, ?)",
+                        (anthropic_id, "claude-3-5-sonnet-latest", True),
                     )
-                    conn.execute(
-                        """INSERT INTO settings
-                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
+
+                    # Google provider
+                    cursor = conn.execute(
+                        """INSERT INTO providers
+                           (name, is_default, temperature, max_tokens, top_p, host, api_key, is_multimodal)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            "Anthropic",
-                            False,
-                            1.0,
-                            4096,
-                            0.95,
-                            "https://api.anthropic.com/v1",
-                            "claude-3-5-sonnet-latest",
-                            "",
-                        ),
+                        ("Google", False, 1.0, 4096, 0.95, "https://generativelanguage.googleapis.com/v1beta", "", True),
                     )
+                    google_id = cursor.lastrowid
                     conn.execute(
-                        """INSERT INTO settings
-                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            "DeepSeek",
-                            False,
-                            1.0,
-                            4096,
-                            0.95,
-                            "https://api.deepseek.com/v1",
-                            "deepseek-chat",
-                            "",
-                        ),
-                    )
-                    conn.execute(
-                        """INSERT INTO settings
-                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            "Mistral",
-                            False,
-                            1.0,
-                            4096,
-                            0.95,
-                            "https://api.mistral.ai/v1",
-                            "mistral-large-latest",
-                            "",
-                        ),
-                    )
-                    conn.execute(
-                        """INSERT INTO settings
-                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            "Google",
-                            False,
-                            1.0,
-                            4096,
-                            0.95,
-                            "https://generativelanguage.googleapis.com/v1beta",
-                            "gemini-2.0-flash-001",
-                            "",
-                        ),
-                    )
-                    conn.execute(
-                        """INSERT INTO settings
-                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            "XAI",
-                            False,
-                            1.0,
-                            4096,
-                            0.95,
-                            "https://api.x.ai/v1",
-                            "grok-2-1212",
-                            "",
-                        ),
-                    )
-                    conn.execute(
-                        """INSERT INTO settings
-                           (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            "Arcee AI",
-                            False,
-                            1.0,
-                            4096,
-                            0.95,
-                            "https://models.arcee.ai/v1",
-                            "auto",
-                            "",
-                        ),
+                        "INSERT INTO models (provider_id, model_name, is_default) VALUES (?, ?, ?)",
+                        (google_id, "gemini-2.0-flash-001", True),
                     )
 
                 # Insert system prompts
@@ -264,60 +179,10 @@ class ChatDatabase:
                     ("default", SYSTEM_PROMPTS["default"].strip(), True),
                 )
             else:
-                # Check if tables exist and create if missing
-                tables = conn.execute(
-                    """SELECT name FROM sqlite_master
-                       WHERE type='table' AND
-                       name IN ('conversations', 'messages', 'attachments', 'settings', 'system_prompts')"""
-                ).fetchall()
-                existing_tables = [table[0] for table in tables]
-
-                if len(existing_tables) < 5:
-                    missing_tables = _DB.split(";")
-                    for create_stmt in missing_tables:
-                        if create_stmt.strip():
-                            # Extract table name from CREATE TABLE statement
-                            table_name = create_stmt.split("CREATE TABLE")[1].split("(")[0].strip()
-                            if table_name not in existing_tables:
-                                conn.execute(create_stmt)
-
-                    # Insert default settings if settings table was just created
-                    if "settings" not in existing_tables:
-                        settings_count = conn.execute("SELECT COUNT(*) FROM settings").fetchone()[0]
-                        if settings_count == 0:
-                            conn.execute(
-                                """INSERT INTO settings
-                                   (name, "default", temperature, max_tokens, top_p, host, model_name, api_key)
-                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                                (
-                                    "default",
-                                    True,
-                                    1.0,
-                                    4096,
-                                    0.95,
-                                    "http://localhost:8000/v1",
-                                    "meta-llama/Llama-3.2-1B-Instruct",
-                                    "",
-                                ),
-                            )
-
                 # Check if summary column exists
                 columns = conn.execute("PRAGMA table_info(conversations)").fetchall()
                 if "summary" not in [col[1] for col in columns]:
                     conn.execute("ALTER TABLE conversations ADD COLUMN summary TEXT")
-
-                # Check if updated_at columns exist for each table
-                for table in ["conversations", "messages", "attachments", "settings", "system_prompts"]:
-                    columns = conn.execute(f"PRAGMA table_info({table})").fetchall()
-                    if "updated_at" not in [col[1] for col in columns]:
-                        conn.execute(
-                            f"ALTER TABLE {table} ADD COLUMN updated_at REAL DEFAULT (strftime('%s.%f', 'now'))"
-                        )
-
-                # Check if is_multimodal column exists in settings table
-                columns = conn.execute("PRAGMA table_info(settings)").fetchall()
-                if "is_multimodal" not in [col[1] for col in columns]:
-                    conn.execute("ALTER TABLE settings ADD COLUMN is_multimodal BOOLEAN DEFAULT false")
 
     def create_conversation(self) -> str:
         """Create a new conversation.
@@ -524,167 +389,151 @@ class ChatDatabase:
 
         return [dict(conv) for conv in conversations]
 
-    def save_settings(self, settings: Dict) -> bool:
-        """Save or update application settings."""
-        with sqlite3.connect(self.db_path) as conn:
-            current_time = time.time()
-
-            # For existing settings, only check name uniqueness if name is changing
-            if "id" in settings and settings["id"] is not None:
-                current_name = conn.execute("SELECT name FROM settings WHERE id = ?", (settings["id"],)).fetchone()
-
-                # Only check for duplicate names if name is being changed
-                if current_name and current_name[0] != settings.get("name"):
-                    existing = conn.execute(
-                        "SELECT id FROM settings WHERE name = ? AND id != ?", (settings.get("name"), settings["id"])
-                    ).fetchone()
-                    if existing:
-                        raise sqlite3.IntegrityError("Settings name must be unique")
-
-                # Update existing setting - Fixed the parameter count here
-                cursor = conn.execute(
-                    """
-                    UPDATE settings
-                    SET name = ?,
-                        temperature = ?,
-                        max_tokens = ?,
-                        top_p = ?,
-                        host = ?,
-                        model_name = ?,
-                        api_key = ?,
-                        updated_at = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        settings.get("name", "Default Config"),
-                        settings.get("temperature", 1.0),
-                        settings.get("max_tokens", 4096),
-                        settings.get("top_p", 0.95),
-                        settings.get("host", "http://localhost:8000/v1"),
-                        settings.get("model_name", "meta-llama/Llama-3.2-1B-Instruct"),
-                        settings.get("api_key", ""),
-                        current_time,
-                        settings["id"],
-                    ),
-                )
-                return cursor.rowcount > 0
-
-            # For new settings, always check name uniqueness
-            existing = conn.execute("SELECT id FROM settings WHERE name = ?", (settings.get("name"),)).fetchone()
-
-            if existing:
-                raise sqlite3.IntegrityError("Settings name must be unique")
-
-            cursor = conn.execute(
-                """
-                INSERT INTO settings (
-                    name, temperature, max_tokens, top_p,
-                    host, model_name, api_key, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    settings.get("name", "New Config"),
-                    settings.get("temperature", 1.0),
-                    settings.get("max_tokens", 4096),
-                    settings.get("top_p", 0.95),
-                    settings.get("host", "http://localhost:8000/v1"),
-                    settings.get("model_name", "meta-llama/Llama-3.2-1B-Instruct"),
-                    settings.get("api_key", ""),
-                    current_time,
-                ),
-            )
-            return cursor.rowcount > 0
-
-    def get_settings(self) -> Dict:
-        """Retrieve current default application settings.
-
-        Returns:
-            Dict: Dictionary containing default settings
-        """
+    # Provider CRUD methods
+    def get_default_provider(self) -> Optional[Dict]:
+        """Get the default provider with its settings."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            settings = conn.execute('SELECT * FROM settings WHERE "default" = true').fetchone()
-            return dict(settings) if settings else {}
+            provider = conn.execute('SELECT * FROM providers WHERE is_default = true').fetchone()
+            return dict(provider) if provider else None
 
-    def add_settings(self, settings: Dict) -> int:
-        """Add a new settings configuration.
-
-        Args:
-            settings (Dict): Dictionary containing setting key-value pairs
-
-        Returns:
-            int: ID of the newly created settings
-
-        Raises:
-            sqlite3.IntegrityError: If settings name already exists
-        """
+    def get_all_providers(self) -> List[Dict]:
+        """Get all providers."""
         with sqlite3.connect(self.db_path) as conn:
-            # Check for duplicate names
-            existing = conn.execute("SELECT id FROM settings WHERE name = ?", (settings.get("name"),)).fetchone()
+            conn.row_factory = sqlite3.Row
+            providers = conn.execute("SELECT * FROM providers ORDER BY name").fetchall()
+            return [dict(p) for p in providers]
 
-            if existing:
-                raise sqlite3.IntegrityError("Settings name must be unique")
+    def get_provider_by_id(self, provider_id: int) -> Optional[Dict]:
+        """Get provider by ID."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            provider = conn.execute("SELECT * FROM providers WHERE id = ?", (provider_id,)).fetchone()
+            return dict(provider) if provider else None
 
+    def add_provider(self, provider: Dict) -> int:
+        """Add a new provider."""
+        with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
-                """
-                INSERT INTO settings (
-                    name, temperature, max_tokens, top_p,
-                    host, model_name, api_key
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
+                """INSERT INTO providers
+                   (name, temperature, max_tokens, top_p, host, api_key, is_multimodal)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    settings.get("name", "New Config"),
-                    settings.get("temperature", 1.0),
-                    settings.get("max_tokens", 4096),
-                    settings.get("top_p", 0.95),
-                    settings.get("host", "http://localhost:8000/v1"),
-                    settings.get("model_name", "meta-llama/Llama-3.2-1B-Instruct"),
-                    settings.get("api_key", ""),
+                    provider.get("name"),
+                    provider.get("temperature", 1.0),
+                    provider.get("max_tokens", 4096),
+                    provider.get("top_p", 0.95),
+                    provider.get("host"),
+                    provider.get("api_key", ""),
+                    provider.get("is_multimodal", False),
                 ),
             )
             return cursor.lastrowid
 
-    def set_default_settings(self, settings_id: int) -> bool:
-        """Mark a settings configuration as default.
-
-        Args:
-            settings_id (int): ID of the settings to mark as default
-
-        Returns:
-            bool: True if successful, False otherwise
-        """
+    def update_provider(self, provider_id: int, provider: Dict) -> bool:
+        """Update provider settings."""
         with sqlite3.connect(self.db_path) as conn:
-            # Remove current default
-            conn.execute('UPDATE settings SET "default" = false WHERE "default" = true')
-
-            # Set new default
-            cursor = conn.execute('UPDATE settings SET "default" = true WHERE id = ?', (settings_id,))
+            cursor = conn.execute(
+                """UPDATE providers
+                   SET name = ?, temperature = ?, max_tokens = ?, top_p = ?,
+                       host = ?, api_key = ?, is_multimodal = ?, updated_at = strftime('%s.%f', 'now')
+                   WHERE id = ?""",
+                (
+                    provider.get("name"),
+                    provider.get("temperature", 1.0),
+                    provider.get("max_tokens", 4096),
+                    provider.get("top_p", 0.95),
+                    provider.get("host"),
+                    provider.get("api_key", ""),
+                    provider.get("is_multimodal", False),
+                    provider_id,
+                ),
+            )
             return cursor.rowcount > 0
 
-    def get_all_settings(self) -> List[Dict]:
-        """Retrieve all settings configurations.
+    def delete_provider(self, provider_id: int) -> bool:
+        """Delete a provider (cascade deletes models)."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("DELETE FROM providers WHERE id = ?", (provider_id,))
+            return cursor.rowcount > 0
 
-        Returns:
-            List[Dict]: List of all settings configurations
-        """
+    def set_default_provider(self, provider_id: int) -> bool:
+        """Set a provider as default."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("UPDATE providers SET is_default = false WHERE is_default = true")
+            cursor = conn.execute("UPDATE providers SET is_default = true WHERE id = ?", (provider_id,))
+            return cursor.rowcount > 0
+
+    # Model CRUD methods
+    def get_models_by_provider(self, provider_id: int) -> List[Dict]:
+        """Get all models for a provider."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            settings = conn.execute("SELECT * FROM settings ORDER BY name").fetchall()
-            return [dict(setting) for setting in settings]
+            models = conn.execute(
+                "SELECT * FROM models WHERE provider_id = ? ORDER BY is_default DESC, model_name",
+                (provider_id,)
+            ).fetchall()
+            return [dict(m) for m in models]
 
-    def get_settings_by_id(self, settings_id: int) -> Optional[Dict]:
-        """Retrieve settings configuration by ID.
-
-        Args:
-            settings_id (int): ID of the settings to retrieve
-
-        Returns:
-            Optional[Dict]: Dictionary containing settings if found, None otherwise
-        """
+    def get_default_model(self, provider_id: int) -> Optional[Dict]:
+        """Get the default model for a provider."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            settings = conn.execute("SELECT * FROM settings WHERE id = ?", (settings_id,)).fetchone()
-            return dict(settings) if settings else None
+            model = conn.execute(
+                "SELECT * FROM models WHERE provider_id = ? AND is_default = true",
+                (provider_id,)
+            ).fetchone()
+            return dict(model) if model else None
+
+    def add_model(self, provider_id: int, model_name: str, is_default: bool = False) -> int:
+        """Add a model to a provider."""
+        with sqlite3.connect(self.db_path) as conn:
+            # Check if this is the first model for the provider
+            existing_models = conn.execute(
+                "SELECT COUNT(*) FROM models WHERE provider_id = ?",
+                (provider_id,)
+            ).fetchone()[0]
+            
+            # If this is the first model, make it default automatically
+            if existing_models == 0:
+                is_default = True
+            
+            # If setting as default, unset other defaults for this provider
+            if is_default:
+                conn.execute(
+                    "UPDATE models SET is_default = false WHERE provider_id = ? AND is_default = true",
+                    (provider_id,)
+                )
+            
+            cursor = conn.execute(
+                "INSERT INTO models (provider_id, model_name, is_default) VALUES (?, ?, ?)",
+                (provider_id, model_name, is_default)
+            )
+            return cursor.lastrowid
+
+    def delete_model(self, model_id: int) -> bool:
+        """Delete a model."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("DELETE FROM models WHERE id = ?", (model_id,))
+            return cursor.rowcount > 0
+
+    def set_default_model(self, model_id: int) -> bool:
+        """Set a model as default for its provider."""
+        with sqlite3.connect(self.db_path) as conn:
+            # Get provider_id for this model
+            provider_id = conn.execute("SELECT provider_id FROM models WHERE id = ?", (model_id,)).fetchone()
+            if not provider_id:
+                return False
+            
+            # Unset other defaults for this provider
+            conn.execute(
+                "UPDATE models SET is_default = false WHERE provider_id = ? AND is_default = true",
+                (provider_id[0],)
+            )
+            
+            # Set this model as default
+            cursor = conn.execute("UPDATE models SET is_default = true WHERE id = ?", (model_id,))
+            return cursor.rowcount > 0
 
     def update_conversation_summary(self, conversation_id: str, summary: str):
         """Update the summary of a conversation.

@@ -133,29 +133,38 @@ class MessageInput(BaseModel):
     attachments: Optional[List[Dict]] = None
 
 
-class SettingsInput(BaseModel):
+class ProviderInput(BaseModel):
     """
-    Pydantic model for AI model settings.
+    Pydantic model for provider configuration.
 
     Attributes:
-        name (str): Name of the settings configuration
+        name (str): Name of the provider
         temperature (float): Controls randomness in responses
         max_tokens (int): Maximum length of generated responses
         top_p (float): Controls diversity via nucleus sampling
         host (str): API endpoint URL
-        model_name (str): Name of the AI model to use
         api_key (str): Authentication key for the API
-        is_multimodal (bool): Whether the model supports file uploads
+        is_multimodal (bool): Whether the provider supports file uploads
     """
 
     name: str
     temperature: Optional[float] = 1.0
     max_tokens: Optional[int] = 4096
     top_p: Optional[float] = 0.95
-    host: Optional[str] = "http://localhost:8000/v1"
-    model_name: Optional[str] = "meta-llama/Llama-3.2-1B-Instruct"
+    host: str
     api_key: Optional[str] = ""
     is_multimodal: Optional[bool] = False
+
+
+class ModelInput(BaseModel):
+    """
+    Pydantic model for model input.
+
+    Attributes:
+        model_name (str): Name of the model
+    """
+
+    model_name: str
 
 
 class PromptInput(BaseModel):
@@ -193,14 +202,18 @@ request_context: ContextVar[RequestContext] = ContextVar("request_context", defa
 
 async def text_streamer(messages: List[Dict[str, str]], client_id: str):
     """Stream text responses from the AI model."""
-    # Get settings and create client first
-    db_settings = db.get_settings()
-    if not db_settings:
-        raise HTTPException(status_code=404, detail="No default settings found")
+    # Get default provider and model
+    provider = db.get_default_provider()
+    if not provider:
+        raise HTTPException(status_code=404, detail="No default provider found")
+    
+    default_model = db.get_default_model(provider["id"])
+    if not default_model:
+        raise HTTPException(status_code=404, detail="No default model found for provider")
 
     client = OpenAI(
-        api_key=db_settings["api_key"] if db_settings["api_key"] != "" else "empty",
-        base_url=db_settings["host"],
+        api_key=provider["api_key"] if provider["api_key"] != "" else "empty",
+        base_url=provider["host"],
     )
 
     formatted_messages = []
@@ -250,10 +263,10 @@ async def text_streamer(messages: List[Dict[str, str]], client_id: str):
         manager.set_generating(client_id, True)
         stream = client.chat.completions.create(
             messages=formatted_messages,
-            model=db_settings["model_name"],
-            max_completion_tokens=db_settings["max_tokens"],
-            temperature=db_settings["temperature"],
-            top_p=db_settings["top_p"],
+            model=default_model["model_name"],
+            max_completion_tokens=provider["max_tokens"],
+            temperature=provider["temperature"],
+            top_p=provider["top_p"],
             stream=True,
         )
 
@@ -508,177 +521,140 @@ async def update_conversation_title(conversation_id: str, update: ConversationTi
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/save_settings")
-async def save_settings(settings: SettingsInput):
-    """Save AI model settings.
-
-    Args:
-        settings (SettingsInput): Settings to save
-
-    Returns:
-        dict: Operation status
-
-    Raises:
-        HTTPException: If save operation fails or name already exists
-    """
+# Provider endpoints
+@app.get("/providers")
+async def get_all_providers():
+    """Get all providers."""
     try:
-        settings_dict = settings.model_dump()
-        settings_dict["updated_at"] = time.time()  # Add timestamp
-        settings_dict["created_at"] = time.time()  # Add creation timestamp for new settings
-        db.save_settings(settings_dict)
-        return {"status": "success"}
+        providers = db.get_all_providers()
+        return {"providers": providers}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/providers/{provider_id}")
+async def get_provider(provider_id: int):
+    """Get provider by ID."""
+    try:
+        provider = db.get_provider_by_id(provider_id)
+        if not provider:
+            raise HTTPException(status_code=404, detail="Provider not found")
+        return provider
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/providers")
+async def create_provider(provider: ProviderInput):
+    """Create a new provider."""
+    try:
+        provider_dict = provider.model_dump()
+        provider_id = db.add_provider(provider_dict)
+        return {"status": "success", "id": provider_id}
     except sqlite3.IntegrityError as e:
         if "unique" in str(e).lower():
-            raise HTTPException(status_code=409, detail="A settings configuration with this name already exists")
+            raise HTTPException(status_code=409, detail="A provider with this name already exists")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/settings")
-async def get_settings():
-    """
-    Retrieve current default settings configuration.
-
-    Returns:
-        dict: Current default settings
-
-    Raises:
-        HTTPException: If retrieval fails
-    """
+@app.put("/providers/{provider_id}")
+async def update_provider(provider_id: int, provider: ProviderInput):
+    """Update a provider."""
     try:
-        settings = db.get_settings()
-        if not settings:
-            raise HTTPException(status_code=404, detail="No default settings found")
-        return settings
+        provider_dict = provider.model_dump()
+        success = db.update_provider(provider_id, provider_dict)
+        if not success:
+            raise HTTPException(status_code=404, detail="Provider not found")
+        return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/settings")
-async def create_settings(settings: SettingsInput):
-    """Create a new settings configuration.
-
-    Args:
-        settings (SettingsInput): Settings data to create
-
-    Returns:
-        dict: Created settings ID and status
-
-    Raises:
-        HTTPException: If creation fails or name already exists
-    """
+@app.delete("/providers/{provider_id}")
+async def delete_provider(provider_id: int):
+    """Delete a provider."""
     try:
-        settings_dict = settings.model_dump()
-        settings_dict["updated_at"] = time.time()  # Add timestamp
-        settings_dict["created_at"] = time.time()  # Add creation timestamp
-        settings_id = db.add_settings(settings_dict)
-        return {"status": "success", "id": settings_id}
+        success = db.delete_provider(provider_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Provider not found")
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/providers/{provider_id}/set_default")
+async def set_default_provider(provider_id: int):
+    """Set a provider as default."""
+    try:
+        success = db.set_default_provider(provider_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Provider not found")
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Model endpoints
+@app.get("/providers/{provider_id}/models")
+async def get_provider_models(provider_id: int):
+    """Get all models for a provider."""
+    try:
+        models = db.get_models_by_provider(provider_id)
+        return {"models": models}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/providers/{provider_id}/models")
+async def add_provider_model(provider_id: int, model: ModelInput):
+    """Add a model to a provider."""
+    try:
+        model_id = db.add_model(provider_id, model.model_name)
+        return {"status": "success", "id": model_id}
     except sqlite3.IntegrityError as e:
         if "unique" in str(e).lower():
-            raise HTTPException(status_code=409, detail="A settings configuration with this name already exists")
+            raise HTTPException(status_code=409, detail="This model already exists for this provider")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.put("/settings/{settings_id}")
-async def update_settings(settings_id: int, settings: SettingsInput):
-    """
-    Update an existing settings configuration.
-
-    Args:
-        settings_id (int): ID of settings to update
-        settings (SettingsInput): New settings data
-
-    Returns:
-        dict: Operation status
-    """
+@app.delete("/models/{model_id}")
+async def delete_model(model_id: int):
+    """Delete a model."""
     try:
-        settings_dict = settings.model_dump()
-        settings_dict["id"] = settings_id
-        settings_dict["updated_at"] = time.time()  # Add timestamp
-        settings_dict["created_at"] = time.time()  # Add creation timestamp
-        success = db.save_settings(settings_dict)
+        success = db.delete_model(model_id)
         if not success:
-            raise HTTPException(status_code=404, detail="Settings not found")
+            raise HTTPException(status_code=404, detail="Model not found")
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/settings/{settings_id}/set_default")
-async def set_default_settings(settings_id: int):
-    """
-    Mark a settings configuration as default.
-
-    Args:
-        settings_id (int): ID of settings to mark as default
-
-    Returns:
-        dict: Operation status
-    """
+@app.post("/models/{model_id}/set_default")
+async def set_default_model(model_id: int):
+    """Set a model as default for its provider."""
     try:
-        success = db.set_default_settings(settings_id)
+        success = db.set_default_model(model_id)
         if not success:
-            raise HTTPException(status_code=404, detail="Settings not found")
+            raise HTTPException(status_code=404, detail="Model not found")
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/settings/all")
-async def get_all_settings():
-    """
-    Get all settings configurations.
-
-    Returns:
-        dict: List of all settings configurations
-    """
+@app.get("/default_provider")
+async def get_default_provider():
+    """Get the default provider."""
     try:
-        settings = db.get_all_settings()
-        return {"settings": settings}
+        provider = db.get_default_provider()
+        if not provider:
+            raise HTTPException(status_code=404, detail="No default provider found")
+        return provider
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/settings/{settings_id}")
-async def get_settings_by_id(settings_id: int):
-    """
-    Get settings by ID.
-
-    Args:
-        settings_id (int): ID of settings to retrieve
-
-    Returns:
-        dict: Settings configuration
-    """
-    try:
-        settings = db.get_settings_by_id(settings_id)
-        if not settings:
-            raise HTTPException(status_code=404, detail="Settings not found")
-        return settings
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/default_settings")
-async def get_default_values():
-    """
-    Get default values for a new settings configuration.
-
-    Returns:
-        dict: Default settings values
-    """
-    return {
-        "temperature": 1.0,
-        "max_tokens": 4096,
-        "top_p": 0.95,
-        "host": "http://localhost:8000/v1",
-        "model_name": "meta-llama/Llama-3.2-1B-Instruct",
-        "api_key": "",
-        "is_multimodal": False,
-    }
 
 
 def generate_safe_filename(original_filename: str) -> str:

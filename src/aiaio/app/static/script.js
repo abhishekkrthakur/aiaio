@@ -664,6 +664,31 @@ function openEditModal(messageDiv, messageId, content) {
     contentInput.focus();
 }
 
+function closeModal() {
+    const modal = document.getElementById('custom-modal');
+    modal.classList.add('hidden');
+}
+
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+
+    container.appendChild(toast);
+
+    // Auto remove after 3 seconds
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease-out';
+        setTimeout(() => {
+            if (container.contains(toast)) {
+                container.removeChild(toast);
+            }
+        }, 300);
+    }, 3000);
+}
 function closeEditModal() {
     const modal = document.getElementById('message-edit-modal');
     modal.classList.add('hidden');
@@ -883,27 +908,60 @@ async function handlePromptChange(e) {
 }
 
 function handlePromptTextChange() {
-    // Enable save button if needed, or just auto-save logic
     // For now, we'll just let the user click save
 }
 
 async function savePromptChanges() {
-    const text = elements.systemPrompt.value;
-    // Use prompt() for now as it's input, but could be replaced with a custom input modal later
-    const name = prompt('Enter a name for this prompt:', 'New Prompt');
-    if (!name) return;
+    const promptSelector = elements.promptSelector;
+    const promptText = elements.systemPrompt;
+
+    const selectedPromptId = promptSelector.value;
+    if (!selectedPromptId) {
+        showToast('Please select a prompt first', 'error');
+        return;
+    }
 
     try {
-        await fetch('/prompts', {
-            method: 'POST',
+        const response = await fetch(`/prompts/${selectedPromptId}`, {
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, text })
+            body: JSON.stringify({
+                text: promptText.value
+            })
         });
-        loadPrompts();
-        showModal('Success', 'System prompt saved successfully!', 'info');
+
+        if (!response.ok) throw new Error('Failed to save prompt');
+
+        showToast('Prompt saved successfully!');
     } catch (error) {
         console.error('Error saving prompt:', error);
-        showModal('Error', 'Failed to save prompt', 'error');
+        showToast('Failed to save prompt', 'error');
+    }
+}
+
+async function createNewPrompt() {
+    const name = prompt('Enter a name for the new prompt:', 'New Prompt');
+    if (!name) return;
+
+    const promptText = elements.systemPrompt.value || '';
+
+    try {
+        const response = await fetch('/prompts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                text: promptText
+            })
+        });
+
+        if (!response.ok) throw new Error('Failed to create prompt');
+
+        showToast('Prompt created successfully!');
+        await loadPrompts(); // Changed from loadSystemPrompts
+    } catch (error) {
+        console.error('Error creating prompt:', error);
+        showToast('Failed to create prompt', 'error');
     }
 }
 
@@ -918,132 +976,219 @@ function handleVisibilityChange() {
 
 async function initializeSettings() {
     try {
-        // Load all settings configs
-        const response = await fetch('/settings/all');
+        // Load all providers
+        const response = await fetch('/providers');
         const data = await response.json();
 
         elements.settingsSelector.innerHTML = '';
-        data.settings.forEach(setting => {
+        data.providers.forEach(provider => {
             const option = document.createElement('option');
-            option.value = setting.id;
-            option.textContent = setting.name;
-            if (setting.default) option.selected = true;
+            option.value = provider.id;
+            option.textContent = provider.name;
+            if (provider.is_default) option.selected = true;
             elements.settingsSelector.appendChild(option);
         });
 
-        // Load current settings
-        const currentResponse = await fetch('/settings');
-        const currentSettings = await currentResponse.json();
-        populateSettingsForm(currentSettings);
+        // Load default provider
+        const defaultResponse = await fetch('/default_provider');
+        const defaultProvider = await defaultResponse.json();
+        populateProviderForm(defaultProvider);
+
+        // Load models for default provider
+        await loadModels(defaultProvider.id);
 
     } catch (error) {
         console.error('Error initializing settings:', error);
     }
 }
 
-function populateSettingsForm(settings) {
-    document.getElementById('api-host').value = settings.host;
-    document.getElementById('api-key').value = settings.api_key;
-    document.getElementById('model-name').value = settings.model_name;
-    document.getElementById('temperature').value = settings.temperature;
-    document.getElementById('temp-value').textContent = settings.temperature;
-    document.getElementById('max-tokens').value = settings.max_tokens;
-    document.getElementById('top-p').value = settings.top_p;
-    document.getElementById('top-p-value').textContent = settings.top_p;
+function populateProviderForm(provider) {
+    document.getElementById('api-host').value = provider.host;
+    document.getElementById('api-key').value = provider.api_key;
+    document.getElementById('temperature').value = provider.temperature;
+    document.getElementById('temp-value').textContent = provider.temperature;
+    document.getElementById('max-tokens').value = provider.max_tokens;
+    document.getElementById('top-p').value = provider.top_p;
+    document.getElementById('top-p-value').textContent = provider.top_p;
+}
+
+async function loadModels(providerId) {
+    try {
+        const response = await fetch(`/providers/${providerId}/models`);
+        const data = await response.json();
+
+        // Display models list in the UI
+        const modelsContainer = document.getElementById('models-list');
+        if (!modelsContainer) return;
+
+        modelsContainer.innerHTML = '';
+        data.models.forEach(model => {
+            const modelDiv = document.createElement('div');
+            modelDiv.className = 'flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded-lg mb-2';
+            modelDiv.innerHTML = `
+                <div class="flex items-center gap-2">
+                    ${model.is_default ? '<i class="fa-solid fa-star text-yellow-500 text-xs"></i>' : ''}
+                    <span class="text-sm">${model.model_name}</span>
+                </div>
+                <div class="flex gap-1">
+                    ${!model.is_default ? `<button onclick="setDefaultModel(${model.id})" class="p-1 text-gray-400 hover:text-yellow-500 transition-colors" title="Set as default">
+                        <i class="fa-regular fa-star text-xs"></i>
+                    </button>` : ''}
+                    <button onclick="deleteModel(${model.id})" class="p-1 text-gray-400 hover:text-red-500 transition-colors" title="Delete">
+                        <i class="fa-solid fa-trash text-xs"></i>
+                    </button>
+                </div>
+            `;
+            modelsContainer.appendChild(modelDiv);
+        });
+    } catch (error) {
+        console.error('Error loading models:', error);
+    }
 }
 
 async function createNewSettingsConfig() {
-    const name = prompt('Enter a name for the new configuration:', 'New Config');
+    const name = prompt('Enter a name for the new provider:', 'New Provider');
     if (!name) return;
 
-    try {
-        // Get default values
-        const defaultsResponse = await fetch('/default_settings');
-        const defaults = await defaultsResponse.json();
+    const host = prompt('Enter API host:', 'http://localhost:8000/v1');
+    if (!host) return;
 
-        const newSettings = {
+    try {
+        const newProvider = {
             name: name,
-            ...defaults
+            host: host,
+            temperature: 1.0,
+            max_tokens: 4096,
+            top_p: 0.95,
+            api_key: '',
+            is_multimodal: false
         };
 
-        const response = await fetch('/settings', {
+        const response = await fetch('/providers', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newSettings)
+            body: JSON.stringify(newProvider)
         });
 
         if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.detail || 'Failed to create settings');
+            throw new Error(error.detail || 'Failed to create provider');
         }
 
         const data = await response.json();
-        showModal('Success', 'Configuration created successfully!', 'info');
+        showToast('Provider created successfully!');
 
-        // Reload settings list and select the new one
+        // Reload providers list and select the new one
         await initializeSettings();
         elements.settingsSelector.value = data.id;
-        // Trigger change event to populate form
         elements.settingsSelector.dispatchEvent(new Event('change'));
 
     } catch (error) {
-        console.error('Error creating settings:', error);
+        console.error('Error creating provider:', error);
         showModal('Error', error.message, 'error');
     }
 }
 
 async function handleSettingsChange(e) {
-    const settingsId = e.target.value;
+    const providerId = e.target.value;
     try {
-        const response = await fetch(`/settings/${settingsId}`);
-        const settings = await response.json();
-        populateSettingsForm(settings);
+        const response = await fetch(`/providers/${providerId}`);
+        const provider = await response.json();
+        populateProviderForm(provider);
 
-        // Auto-activate the selected configuration
+        // Load models for this provider
+        await loadModels(providerId);
+
+        // Auto-activate the selected provider
         await setDefaultSettings(true);
     } catch (error) {
-        console.error('Error loading settings:', error);
+        console.error('Error loading provider:', error);
     }
 }
 
 async function saveSettings() {
-    const settings = {
+    const provider = {
         name: elements.settingsSelector.options[elements.settingsSelector.selectedIndex].text,
         host: document.getElementById('api-host').value,
         api_key: document.getElementById('api-key').value,
-        model_name: document.getElementById('model-name').value,
         temperature: parseFloat(document.getElementById('temperature').value),
         max_tokens: parseInt(document.getElementById('max-tokens').value),
-        top_p: parseFloat(document.getElementById('top-p').value)
+        top_p: parseFloat(document.getElementById('top-p').value),
+        is_multimodal: false // You can add a checkbox for this later
     };
 
-    const settingsId = elements.settingsSelector.value;
+    const providerId = elements.settingsSelector.value;
 
     try {
-        await fetch(`/settings/${settingsId}`, {
+        await fetch(`/providers/${providerId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(settings)
+            body: JSON.stringify(provider)
         });
-        showModal('Success', 'Settings saved successfully!', 'info');
+        showToast('Provider settings saved!');
     } catch (error) {
-        console.error('Error saving settings:', error);
-        showModal('Error', 'Failed to save settings', 'error');
+        console.error('Error saving provider:', error);
+        showToast('Failed to save settings', 'error');
     }
 }
 
 async function setDefaultSettings(silent = false) {
-    const settingsId = elements.settingsSelector.value;
+    const providerId = elements.settingsSelector.value;
     try {
-        await fetch(`/settings/${settingsId}/set_default`, { method: 'POST' });
+        await fetch(`/providers/${providerId}/set_default`, { method: 'POST' });
         if (!silent) {
-            showModal('Success', 'Default settings updated!', 'info');
+            showToast('Default provider updated!');
         }
     } catch (error) {
         console.error('Error setting default:', error);
         if (!silent) {
-            showModal('Error', 'Failed to set default settings', 'error');
+            showToast('Failed to set default provider', 'error');
         }
+    }
+}
+
+async function addModel() {
+    const providerId = elements.settingsSelector.value;
+    const modelName = prompt('Enter model name:', '');
+    if (!modelName) return;
+
+    try {
+        await fetch(`/providers/${providerId}/models`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model_name: modelName })
+        });
+        showToast('Model added successfully!');
+        await loadModels(providerId);
+    } catch (error) {
+        console.error('Error adding model:', error);
+        showToast('Failed to add model', 'error');
+    }
+}
+
+async function deleteModel(modelId) {
+    if (!confirm('Are you sure you want to delete this model?')) return;
+
+    try {
+        await fetch(`/models/${modelId}`, { method: 'DELETE' });
+        showToast('Model deleted successfully!');
+        const providerId = elements.settingsSelector.value;
+        await loadModels(providerId);
+    } catch (error) {
+        console.error('Error deleting model:', error);
+        showToast('Failed to delete model', 'error');
+    }
+}
+
+async function setDefaultModel(modelId) {
+    try {
+        await fetch(`/models/${modelId}/set_default`, { method: 'POST' });
+        showToast('Default model updated!');
+        const providerId = elements.settingsSelector.value;
+        await loadModels(providerId);
+    } catch (error) {
+        console.error('Error setting default model:', error);
+        showToast('Failed to set default model', 'error');
     }
 }
 
