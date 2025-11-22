@@ -36,9 +36,6 @@ const elements = {
     sidebar: document.getElementById('sidebar'),
     settingsSidebar: document.getElementById('settings-sidebar'),
     sidebarOverlay: document.getElementById('sidebar-overlay'),
-    systemPromptPanel: document.getElementById('system-prompt-panel'),
-    systemPromptContent: document.getElementById('system-prompt-content'),
-    systemPromptChevron: document.getElementById('system-prompt-chevron'),
     promptSelector: document.getElementById('prompt-selector'),
     savePromptButton: document.getElementById('save-prompt-button'),
     settingsSelector: document.getElementById('settings-selector'),
@@ -176,15 +173,25 @@ function closeModal() {
     }, 200);
 }
 
-function toggleSystemPrompt() {
-    const isHidden = elements.systemPromptContent.classList.contains('hidden');
-    if (isHidden) {
-        elements.systemPromptContent.classList.remove('hidden');
-        elements.systemPromptChevron.classList.add('rotate-180');
-    } else {
-        elements.systemPromptContent.classList.add('hidden');
-        elements.systemPromptChevron.classList.remove('rotate-180');
-    }
+function switchSettingsTab(tabName) {
+    // Update tab buttons
+    const tabs = ['configurations', 'system-prompt'];
+    tabs.forEach(tab => {
+        const tabButton = document.getElementById(`tab-${tab}`);
+        const tabContent = document.getElementById(`settings-tab-${tab}`);
+
+        if (tab === tabName) {
+            // Activate this tab
+            tabButton.classList.remove('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+            tabButton.classList.add('border-blue-600', 'text-blue-600', 'dark:text-blue-400');
+            tabContent.classList.remove('hidden');
+        } else {
+            // Deactivate other tabs
+            tabButton.classList.remove('border-blue-600', 'text-blue-600', 'dark:text-blue-400');
+            tabButton.classList.add('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+            tabContent.classList.add('hidden');
+        }
+    });
 }
 
 function toggleDarkMode() {
