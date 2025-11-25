@@ -1,0 +1,43 @@
+name: Build Mac App
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Install dependencies
+        run: |
+          uv venv
+          uv pip install .
+          # Ensure build dependencies are installed explicitly just in case
+          uv pip install pywebview pyinstaller pillow
+
+      - name: Build Mac App
+        run: |
+          # Activate venv
+          source .venv/bin/activate
+          bash build_mac.sh
+
+      - name: Zip Application
+        run: |
+          cd dist
+          zip -r aiaio_mac.zip aiaio.app
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aiaio-mac-app
+          path: dist/aiaio_mac.zip

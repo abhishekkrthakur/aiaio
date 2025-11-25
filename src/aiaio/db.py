@@ -112,10 +112,12 @@ class ChatDatabase:
         Creates tables if they don't exist or if the database is new.
         Also handles schema migrations for existing databases.
         """
-        db_exists = os.path.exists(self.db_path)
-
         with sqlite3.connect(self.db_path) as conn:
-            if not db_exists:
+            # Check if main table exists
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='conversations'")
+            table_exists = cursor.fetchone() is not None
+
+            if not table_exists:
                 # Execute schema
                 conn.executescript(_DB)
 
@@ -219,6 +221,24 @@ class ChatDatabase:
                     )
 
             # Ensure default project exists
+            # Check if projects table exists first (it might not if we are migrating from very old version, but schema above creates it)
+            # If we just created schema, it exists. If we are migrating, we might need to create it? 
+            # The original code assumed if db exists, we just migrate columns. 
+            # But projects table was added later. 
+            # Let's check if projects table exists
+            projects_table = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='projects'").fetchone()
+            if not projects_table:
+                 conn.execute("""
+                    CREATE TABLE projects (
+                        project_id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        description TEXT,
+                        system_prompt TEXT,
+                        created_at REAL DEFAULT (strftime('%s.%f', 'now')),
+                        updated_at REAL DEFAULT (strftime('%s.%f', 'now'))
+                    );
+                 """)
+
             projects_count = conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
             if projects_count == 0:
                 default_project_id = str(uuid.uuid4())
@@ -233,6 +253,7 @@ class ChatDatabase:
                 )
 
                 # Migrate existing conversations to default project
+                # Check if project_id column exists in conversations (we added it above if missing)
                 conn.execute("UPDATE conversations SET project_id = ? WHERE project_id IS NULL", (default_project_id,))
 
     def create_conversation(self, project_id: Optional[str] = None) -> str:
