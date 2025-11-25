@@ -138,3 +138,7 @@ pyinstaller desktop.py \
 
 echo "Build complete! The app is in dist/aiaio.app"
 rm desktop.py
+
+# Ad-hoc sign the application bundle to ensure validity
+echo "Signing application bundle..."
+codesign --force --deep --sign - dist/aiaio.app
