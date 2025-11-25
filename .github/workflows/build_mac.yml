@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-14 # Explicitly target Apple Silicon (M1)
 
     steps:
       - uses: actions/checkout@v4
@@ -34,10 +34,10 @@ jobs:
       - name: Zip Application
         run: |
           cd dist
-          zip -r aiaio_mac.zip aiaio.app
+          zip -r aiaio_mac_arm64.zip aiaio.app
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aiaio-mac-app
-          path: dist/aiaio_mac.zip
+          name: aiaio-mac-arm64
+          path: dist/aiaio_mac_arm64.zip
