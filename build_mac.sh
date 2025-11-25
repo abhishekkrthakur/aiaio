@@ -137,7 +137,6 @@ pyinstaller desktop.py \
     --collect-all "aiaio"
 
 echo "Build complete! The app is in dist/aiaio.app"
-rm desktop.py
 
 # Ad-hoc sign the application bundle to ensure validity
 echo "Signing application bundle..."
