@@ -34,7 +34,7 @@ jobs:
       - name: Zip Application
         run: |
           cd dist
-          zip -r aiaio_mac_arm64.zip aiaio.app
+          zip -r aiaio_mac_arm64.zip aiaio.app Install.command
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

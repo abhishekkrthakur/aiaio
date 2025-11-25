@@ -142,3 +142,19 @@ rm desktop.py
 # Ad-hoc sign the application bundle to ensure validity
 echo "Signing application bundle..."
 codesign --force --deep --sign - dist/aiaio.app
+
+# Create a user-friendly installer script to bypass Gatekeeper
+echo "Creating installer script..."
+cat <<EOF > dist/Install.command
+#!/bin/bash
+DIR="\$( cd "\$( dirname "\${BASH_SOURCE[0]}" )" && pwd )"
+echo "Fixing Gatekeeper attributes for aiaio..."
+xattr -cr "\$DIR/aiaio.app"
+echo "Done."
+echo "Opening aiaio..."
+open "\$DIR/aiaio.app"
+EOF
+
+chmod +x dist/Install.command
+
+echo "Build complete! The app and installer are in dist/"
