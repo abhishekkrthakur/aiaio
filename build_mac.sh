@@ -143,18 +143,35 @@ rm desktop.py
 echo "Signing application bundle..."
 codesign --force --deep --sign - dist/aiaio.app
 
-# Create a user-friendly installer script to bypass Gatekeeper
-echo "Creating installer script..."
-cat <<EOF > dist/Install.command
-#!/bin/bash
-DIR="\$( cd "\$( dirname "\${BASH_SOURCE[0]}" )" && pwd )"
-echo "Fixing Gatekeeper attributes for aiaio..."
-xattr -cr "\$DIR/aiaio.app"
-echo "Done."
-echo "Opening aiaio..."
-open "\$DIR/aiaio.app"
+# Create DMG using dmgbuild
+echo "Creating DMG..."
+
+# Install dmgbuild if not present
+uv pip install dmgbuild
+
+# Generate dmg settings
+cat <<EOF > dist/dmg_settings.py
+import os.path
+
+application = 'dist/aiaio.app'
+appname = 'aiaio'
+
+format = 'UDBZ'
+size = None
+files = [ application ]
+symlinks = { 'Applications': '/Applications' }
+icon_locations = {
+    'aiaio.app': (100, 100),
+    'Applications': (500, 100)
+}
+window_rect = ((100, 100), (600, 400))
 EOF
 
-chmod +x dist/Install.command
+# Run dmgbuild
+dmgbuild -s dist/dmg_settings.py "aiaio" dist/aiaio.dmg
 
-echo "Build complete! The app and installer are in dist/"
+# Cleanup
+rm dist/dmg_settings.py
+rm desktop.py
+
+echo "Build complete! The DMG is in dist/aiaio.dmg"

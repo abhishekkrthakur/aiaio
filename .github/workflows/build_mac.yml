@@ -31,13 +31,8 @@ jobs:
           source .venv/bin/activate
           bash build_mac.sh
 
-      - name: Zip Application
-        run: |
-          cd dist
-          zip -r aiaio_mac_arm64.zip aiaio.app Install.command
-
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aiaio-mac-arm64
-          path: dist/aiaio_mac_arm64.zip
+          name: aiaio-mac-arm64-dmg
+          path: dist/aiaio.dmg
